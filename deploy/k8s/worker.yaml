@@ -1,0 +1,50 @@
+# Resident worker pool (Q2=B): consumes the shared Valkey stream (group `workers`).
+# Scaled by queue depth via HPA (RESILIENCY-09). Not per-scan.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chiller-worker
+  labels: { app: chiller, role: worker }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: chiller, role: worker } }
+  template:
+    metadata:
+      labels: { app: chiller, role: worker }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: chiller
+          image: chiller:REPLACE_WITH_DIGEST # SECURITY-10
+          args:
+            - "--role=worker"
+            - "--store=mongo"
+            - "--queue=valkey"
+            - "--mongo-db=chiller"
+          envFrom:
+            - secretRef: { name: chiller-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+# HPA on queue depth. The CPU trigger below is a portable placeholder; the
+# production trigger is a KEDA ScaledObject on the Valkey stream length (XLEN of
+# chiller:queue:stream) — finalized in Operations with the chosen fleet.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: chiller-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: chiller-worker
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }

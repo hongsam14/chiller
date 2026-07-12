@@ -1,0 +1,29 @@
+# Deny-by-default network posture (SECURITY-07). Only chiller pods reach the
+# backends; only the ingress reaches the manager API. Assumes the CNI enforces
+# NetworkPolicy. Namespace-scoped; adjust namespaceSelector to your ingress ns.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chiller-backends-ingress
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: role, operator: In, values: ["mongo", "valkey-queue"] }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: chiller } } # only chiller pods
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chiller-manager-ingress
+spec:
+  podSelector: { matchLabels: { app: chiller, role: manager } }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { role: ingress } } # only the ingress ns
+      ports:
+        - { protocol: TCP, port: 8080 }

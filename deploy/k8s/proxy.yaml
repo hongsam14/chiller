@@ -1,0 +1,43 @@
+# Singleton auth-proxy (financial mode only): one authenticated session
+# (single-session invariant). replicas: 1 — NOT per-scan. Enable only when
+# running financial-sector scans; workers egress through it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chiller-proxy
+  labels: { app: chiller, role: proxy }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: chiller, role: proxy } }
+  template:
+    metadata:
+      labels: { app: chiller, role: proxy }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: chiller
+          image: chiller:REPLACE_WITH_DIGEST # SECURITY-10
+          args:
+            - "--role=proxy"
+            - "--proxy-addr=0.0.0.0:8889"
+            - "--storage-state=/secrets/storageState.json"
+          volumeMounts:
+            - { name: storage-state, mountPath: /secrets, readOnly: true }
+          ports:
+            - { name: proxy, containerPort: 8889 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        - name: storage-state
+          secret: { secretName: chiller-storage-state } # SECURITY-12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chiller-proxy
+spec:
+  selector: { app: chiller, role: proxy }
+  ports:
+    - { name: proxy, port: 8889, targetPort: proxy }

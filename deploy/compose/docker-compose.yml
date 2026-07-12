@@ -1,0 +1,44 @@
+# Local development / manual integration topology (Q1=C). Not the production
+# manifest — that is deploy/k8s. Here chiller runs the all-in-one role against a
+# single-node Mongo and two Valkey instances (queue durable, cache volatile —
+# Q9=C). Pin image digests for anything beyond local dev (SECURITY-10).
+services:
+  mongo:
+    image: mongo:7
+    command: ["--bind_ip_all"]
+    ports: ["27017:27017"]
+    volumes: ["mongo-data:/data/db"]
+
+  valkey-queue:
+    image: valkey/valkey:8
+    # durable queue: AOF on, no eviction (never drop work items).
+    command: ["valkey-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports: ["6379:6379"]
+    volumes: ["valkey-queue-data:/data"]
+
+  valkey-cache:
+    image: valkey/valkey:8
+    # volatile cache: LRU eviction (ResponseCache, #5 — separate instance, Q9=C).
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["6380:6379"]
+
+  chiller:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on: [mongo, valkey-queue]
+    environment:
+      CHILLER_MONGO_URI: "mongodb://mongo:27017/?w=majority"
+      CHILLER_VALKEY_ADDR: "valkey-queue:6379"
+      CHILLER_TOKEN: "dev-token-change-me"
+    command:
+      - "--role=all"
+      - "--addr=0.0.0.0:8080"
+      - "--store=mongo"
+      - "--queue=valkey"
+      - "--token=dev-token-change-me"
+    ports: ["8080:8080"]
+
+volumes:
+  mongo-data:
+  valkey-queue-data:
