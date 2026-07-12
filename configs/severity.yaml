@@ -1,0 +1,17 @@
+# Per-tool severity mapping (findings SeverityMapper, FQ4=B). Any unmapped tool
+# severity falls back to Info (R4, Q3b — passive observation is recon-tier).
+default: Info
+
+tools:
+  testssl:
+    LOW: Low
+    MEDIUM: Medium
+    HIGH: High
+    CRITICAL: Critical
+  humble:
+    warning: Medium
+    info: Info
+  observation:
+    low: Low
+    medium: Medium
+    high: High

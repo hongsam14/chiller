@@ -1,0 +1,37 @@
+# The KISA accounting set + delegations — loaded into domain.CoverageSpec.
+# This is the customer-changeable "which items do we account" surface (refactor
+# B): editing it never touches the kernel.
+items:
+  - PS-001
+  - PS-002
+  - PS-003
+  - PS-004
+  - PS-005
+  - PS-006
+  - PS-007
+  - PS-008
+  - PS-009
+  - PS-010
+  - PS-011
+  - PS-012
+  - PS-013
+  - PS-014
+  - PS-015
+  - PS-016
+  - PS-017
+  - PS-018
+  - PS-019
+  - PS-020
+  - PS-021
+  - PS-022
+  - PS-023
+  - PS-024
+  - PS-025
+  - PS-026
+
+# item → the stage that covers it (delegated, not judged by chiller). R6.
+delegations:
+  PS-014: ASM     # unnecessary HTTP methods
+  PS-005: Nuclei  # error page info disclosure
+  PS-006: Nuclei  # stack trace
+  PS-026: Nuclei  # open redirect

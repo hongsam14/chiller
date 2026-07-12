@@ -1,0 +1,46 @@
+# CWE → framework projection (weakness axis) + attacker axis (ATT&CK) for items
+# with no canonical CWE. Indicative rows — the authoritative CWE↔PS-ID table is
+# pinned at Functional Design (constraint C-5). MVP fills KISA only; OWASP/CAPEC/
+# ATTACK are Post-MVP projection labels (adding them leaves KISA coverage
+# bit-identical — property P6).
+#
+# Distinct CWEs — each maps to exactly the item its owning checker covers, so
+# ownership → PS-ID is unambiguous (checker CWEs in internal/scan/checking/*).
+# 22 covered items (10 observation + 12 probe). Delegated PS-005/006/014/026 are
+# NOT here — they come from configs/coverage/kisa.yaml delegations.
+version: "kisa-2026-07-08"
+
+map:
+  # --- Probe: humble (headers/cookies) ---
+  CWE-319:  { KISA: [PS-001] }          # HSTS / cleartext transport
+  CWE-614:  { KISA: [PS-015] }          # cookie without Secure
+  CWE-1004: { KISA: [PS-016] }          # cookie without HttpOnly
+  CWE-1275: { KISA: [PS-017] }          # cookie without SameSite
+  CWE-1021: { KISA: [PS-024] }          # clickjacking (frame options)
+  # --- Probe: httpx (versions), testssl, dirhunt, changeme, Corsy ---
+  CWE-693:  { KISA: [PS-007, PS-020] }  # version disclosure (server + framework)
+  CWE-1327: { KISA: [PS-002] }          # weak TLS
+  CWE-548:  { KISA: [PS-004] }          # directory listing
+  CWE-798:  { KISA: [PS-019] }          # default credentials
+  CWE-346:  { KISA: [PS-021] }          # permissive CORS (origin validation)
+  # --- Observation (in-process native signatures) ---
+  CWE-311:  { KISA: [PS-003] }          # plaintext login form over http
+  CWE-651:  { KISA: [PS-008] }          # robots.txt sensitive path
+  CWE-615:  { KISA: [PS-009] }          # sensitive info in comments/source
+  CWE-527:  { KISA: [PS-010] }          # .git exposure
+  CWE-538:  { KISA: [PS-011] }          # .env exposure
+  CWE-530:  { KISA: [PS-012] }          # backup file exposure
+  CWE-306:  { KISA: [PS-013] }          # admin page missing auth
+  CWE-598:  { KISA: [PS-018] }          # session id in URL
+  CWE-942:  { KISA: [PS-022] }          # crossdomain.xml permissive
+  CWE-799:  { KISA: [PS-023] }          # CAPTCHA absence on login
+  # --- attacker-axis sentinel (subzy) ---
+  no-canonical-cwe: { KISA: [] }        # explicit empty — never silence (R8)
+
+# attacker axis: items with no canonical CWE, classified by ATT&CK technique (FQ6)
+attackTechnique:
+  PS-025:
+    owner: "probe:subzy"
+    labels:
+      ATTACK: [T1584.001]               # Compromise Infrastructure: Domains
+      CAPEC: []
