@@ -9,7 +9,8 @@
 - ⚠️ **Reality check (2026-07-13)**: "code complete" ≠ "scans 26 items". Two payload-delivery gaps sit under the green build:
   - **12 probe-owned items**: report `tool-failed` (no verdict) — no OSS probe binary has ever been executed. See Backlog → TOP PRIORITY.
   - **6 observation items** (PS-008/010/011/012/013/022): signature logic is real but never receives its well-known artifact; 4 report false-clean. See Backlog → HIGH. The remaining 4 items are delegated by design.
-  - **Effective real coverage today ≈ 4 observation items** (PS-003/009/018/023) fully wired; the rest are owner-present but payload-starved.
+  - **Signature detection quality** (all 10 regexes, adversarial review 2026-07-13, verified against RE2): even the wired checks under-detect (shallow dictionaries: `.env` 4 keys, secrets ~7 patterns, backup ~7 exts) and some over-fire (`.env` doc FP, legit-archive FP at High, bare `sid` FP). Two transport blind spots (`br`/`zstd` bodies undecoded → global FN; 512KB truncation) can nullify even PS-003/009/018. No ReDoS (RE2). See Backlog → Signature detection quality.
+  - **Effective real coverage today ≈ 4 observation items** (PS-003/009/018/023) fully wired — and those under-detect per the signature review; the rest are owner-present but payload-starved.
 - **Driving Plan**: `aidlc-docs/inception/requirements/reference/augmentation_plan.html` — KISA 컴플라이언스 26개 항목 passive-scanner 엔진
 
 ## Mission (from the plan)
@@ -88,6 +89,13 @@ Q8=B propose IR+COE.
 
 ## Backlog
 
+**Detection-fidelity priority order** (three payload/quality gaps sit under the green build; do in this order):
+1. 🔴 **Probe CLIs unwired** — 12 items produce *no verdict*. Broadest gap. (below)
+2. 🔴 **Signature transport correctness** — `br`/`zstd` bodies + 512KB truncation can silently break
+   even the *currently-working* checks (global false-negative). Invisible, so ranked with probe. (§ Signature quality → P0)
+3. 🟠 **Observation well-known-path GETs** — 6 items never receive their artifact. (below)
+4. 🟡 **Signature dictionary/value fidelity** — shallow dictionaries → FN, loose anchors → FP, even once payload is delivered. (§ Signature quality → P1)
+
 ### 🔴 TOP PRIORITY — Wire the 7 probe CLIs for real (infra-plan §3)
 **chiller judges only 10 of the 26 KISA items today.** No OSS tool has ever been executed as a
 subprocess: all 7 probe adapters are unwired (`argv == nil`), every parser is `stubParse`, and the
@@ -107,6 +115,60 @@ never reached and has zero test coverage.
   Setting `argv` non-nil flips `Adapter.Wired()` and the item moves tool-failed → checked.
 - **Acceptance**: the tool-failed count in the e2e coverage test drops by that probe's owned items
   and `checked` rises; coverage still partitions 26.
+
+### 🔴/🟡 Signature detection quality — shallow dictionaries + transport blind spots (infra-plan §3c)
+Adversarial review of all 10 observation regexes, 2026-07-13 (every match/no-match claim below was
+verified empirically against Go RE2, 27/27). **Engine and FP-scoping design are strong; the
+detection *dictionaries* and *value validation* are shallow, and two transport issues can nullify
+even the working checks.** Split by nature:
+
+**P0 — correctness (breaks even the currently-wired checks PS-003/009/018; do with the probe work):**
+- **`br`/`zstd`/`deflate` bodies are never decoded.** The fetcher uses Go's default transport, which
+  transparently handles **gzip only**. It sets no `Accept-Encoding`, so today servers reply gzip/
+  identity and it works — but the moment a proxy/probe path advertises `br` (Cloudflare default) or
+  `zstd`, every body regex runs against compressed bytes and matches **nothing**: a silent, invisible
+  global false-negative. Decode by `Content-Encoding` (or force `identity`) before matching.
+- **512 KB body cap truncates large payloads.** `io.LimitReader(body, 512KB)` on minified JS bundles
+  (routinely >512KB) hides any secret/anchor past the cut; a `<!-- … -->` split at the boundary loses
+  its `-->` so `htmlComment` skips the whole trailing comment. Consider a streaming/scan-then-drop
+  read with a higher scan budget, or at least record when a body was truncated (don't report "clean"
+  on a truncated body).
+- **`hasPasswordField` gates THREE checks (PS-003/013/023) off one regex.** JS-rendered login forms
+  (SPA) have no `<input type=password>` in the initial HTML → all three misfire (missed plaintext
+  login + captcha, and admin flips to a false "unauthenticated" positive). Note as a known passive/
+  no-JS limit; Playwright discovery (infra-plan §4) is the real lift.
+
+**P1 — dictionary/value fidelity (do after payload delivery lands; each item verified):**
+- **PS-011 `.env` — worst (FN+FP).** Only 4 keys (`DB_PASSWORD/APP_KEY/SECRET_KEY/AWS_SECRET_ACCESS_KEY`);
+  `JWT_SECRET=`, `MAIL_PASSWORD=`, `STRIPE_SECRET_KEY=` (prefix breaks the `^` anchor) all **miss**
+  (verified). No path guard → framework docs showing a `.env` example are flagged **Critical (FP)**.
+  Fix: broaden key set + `KEY=value` shape/entropy, and only judge an actual `.env` artifact.
+- **PS-009 sensitive-comment — weak secret detection.** Misses **JSON-style `"password": "…"`** (the
+  intervening `"` defeats `password\s*[=:]`; only JS-object `password:"…"` matches — verified) and
+  **all modern high-signal token formats** (`AKIA…`, `ghp_…`, `sk_live_…`, `AIza…`, `xoxb-…`, JWT
+  `eyJ…` — all verified missed). ~7 patterns vs gitleaks/trufflehog's 100+. Fix: add a token-format
+  set + a `"key"\s*:\s*"…"` JSON form.
+- **PS-012 backup — FP at High + narrow FN.** Legit `report.zip`/`data.sql`/`archive.tar.gz` downloads
+  flagged **High (FP)**; `.orig/.7z/.gz/.tgz/.backup/.save` **missed** (verified). Fix: pair extension
+  with a backup-name heuristic (`index.php.bak`, `www.zip`, `db.sql`) instead of any archive.
+- **PS-018 session-in-URL — `sid` too broad.** `/product?sid=12345` (store/screen id) flagged (FP,
+  verified); `connect.sid` missed. Fix: drop bare `sid` or gate on token entropy/length.
+- **PS-013 admin — narrow list + SPA FP.** Misses `/manager/html` (Tomcat), `/dashboard`,
+  `/phpmyadmin`, `/administration`, `/backend` (verified); SPA login admin → false "unauthenticated".
+- **PS-010 `.git`** — catches only `config`/`HEAD`; misses directory-listing exposures, `index`,
+  `packed-refs`. Guard `Contains("/.git")` also matches `/.gitignore`, `/.github/` (loose).
+- **PS-008 robots (Low)** — keyword list misses `/database`, `/sql`, `/.env`, `/logs`; Low severity
+  limits impact. **PS-022 crossdomain** — regex solid; no `clientaccesspolicy.xml` (dead). **PS-023
+  captcha** — fires on nearly every login (Low); JS-injected reCAPTCHA → false "absence".
+- Also correct the `observation.Default()` comment calling these "safe stubs" — they are real anchors.
+
+**Not a concern (stated for the record):** RE2 gives **linear-time matching — no ReDoS** is possible
+on any of these patterns regardless of `.*`/`[^>]+` usage. Do not "harden" against catastrophic
+backtracking; it cannot occur.
+
+**Acceptance:** a curated FP/FN corpus (benign archive, framework `.env` doc, JSON secret blob, br-
+encoded body, >512KB bundle, SPA login) — each asserts the correct verdict; anchors stay tight (no
+new FPs on ordinary pages).
 
 ### 🟠 HIGH — Observation well-known-path GETs are not wired (FR-03/FR-05 gap)
 **6 of the 10 observation items are effectively inert on a normal scan, and 4 of those report

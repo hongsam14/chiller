@@ -109,6 +109,49 @@ finding; coverage still partitions 26; anchors stay tight (no new false positive
 
 ---
 
+## 3c. Signature detection quality — dictionaries + transport blind spots
+
+Adversarial review of all 10 observation regexes (2026-07-13). Every match/no-match claim below was
+**verified empirically against Go RE2 (27/27)**. The engine and FP-scoping design are strong; the gaps
+are shallow *dictionaries*, missing *value validation*, and two *transport* issues that can nullify even
+the working checks. Split by priority.
+
+### P0 — correctness (breaks even the currently-wired checks; pair with §3 probe work)
+- **Decode `br`/`zstd`/`deflate` before matching.** The fetcher uses Go's default transport →
+  transparent **gzip only**, and sets no `Accept-Encoding`, so today it works by luck (servers reply
+  gzip/identity). The instant a proxy/probe path advertises `br` (Cloudflare default) or `zstd`, every
+  body regex sees compressed bytes and matches nothing — an invisible global false-negative. Decode by
+  `Content-Encoding`, or pin `Accept-Encoding: gzip`/`identity` and reject unknown encodings loudly.
+- **512 KB body cap (`io.LimitReader`)** hides secrets/anchors past the cut in large minified bundles,
+  and truncates `<!-- … -->` so the trailing comment is skipped. Raise the scan budget or stream-scan;
+  never report "clean" on a body that was truncated — record the truncation.
+- **`hasPasswordField` gates PS-003/013/023 off one regex.** SPA (JS-rendered) login forms have no
+  `<input type=password>` in initial HTML → missed plaintext-login + captcha, and admin flips to a
+  false "unauthenticated" positive. Real fix is Playwright discovery (§4); until then, document.
+
+### P1 — dictionary / value fidelity (after payload delivery §3b lands)
+| Item | Verified defect | Fix |
+|---|---|---|
+| **PS-011 `.env`** | 4 keys only; `JWT_SECRET`/`MAIL_PASSWORD`/`STRIPE_SECRET_KEY` miss (prefix breaks `^`). No path guard → framework `.env` docs flagged **Critical (FP)**. | Broaden keys + `KEY=value` shape/entropy; judge only a real `.env` artifact. |
+| **PS-009 secrets** | Misses JSON `"password":"…"` (intervening `"`); misses `AKIA…`/`ghp_…`/`sk_live_…`/`AIza…`/`xoxb-…`/JWT `eyJ…`. ~7 patterns vs 100+. | Add token-format set + `"key"\s*:\s*"…"` JSON form. |
+| **PS-012 backup** | Legit `report.zip`/`data.sql`/`archive.tar.gz` → **High (FP)**; `.orig/.7z/.gz/.tgz/.backup/.save` miss. | Pair ext with backup-name heuristic (`index.php.bak`, `www.zip`, `db.sql`). |
+| **PS-018 session** | Bare `sid` too broad → `/product?sid=12345` (FP); `connect.sid` missed. | Drop bare `sid` or gate on token entropy/length. |
+| **PS-013 admin** | Narrow list: `/manager/html`, `/dashboard`, `/phpmyadmin`, `/administration`, `/backend` miss; SPA login → false "unauthenticated". | Widen path set; strengthen the "authenticated?" proxy beyond password-field presence. |
+| **PS-010 `.git`** | Only `config`/`HEAD`; misses dir-listing exposures, `index`, `packed-refs`. Guard matches `/.gitignore`, `/.github/`. | Add artifact variants; tighten path guard to `/.git/`. |
+| **PS-008 robots** (Low) | Keyword list misses `/database`, `/sql`, `/.env`, `/logs`. | Extend keywords; severity Low limits urgency. |
+| **PS-022 crossdomain** | Regex solid; no `clientaccesspolicy.xml` (Silverlight, dead). | Optional. |
+| **PS-023 captcha** | Fires on nearly every login (Low); JS-injected reCAPTCHA → false "absence". | Accept as Low-noise, or require a login-flow signal. |
+
+Also correct the `observation.Default()` comment calling these "safe stubs" — they are real anchors.
+
+**Not a concern (for the record):** RE2 is **linear-time — no ReDoS** on any pattern regardless of
+`.*`/`[^>]+`. Do not add backtracking hardening; it cannot occur.
+
+**Acceptance:** a curated FP/FN corpus — benign archive, framework `.env` doc, JSON secret blob,
+br-encoded body, >512KB bundle, SPA login — each asserts the correct verdict; anchors stay tight.
+
+---
+
 ## 4. Dynamic JS asset discovery (Post-MVP, r5/A-6/HC1)
 
 MVP: `fetch.StaticDiscoverer` (parses `<script src>`, capped fan-out). Deferred:
