@@ -1,0 +1,22 @@
+aidlc-docs/**/*.local.md
+
+# Binaries
+/bin/
+/chiller
+*.exe
+*.out
+
+# Test / coverage
+*.test
+coverage.out
+coverage.html
+
+# Go
+vendor/
+go.work
+go.work.sum
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,30 @@
+# chiller lint config. The depguard rules mechanically enforce NFR-02
+# (control/data-plane one-way dependency) — see unit-of-work-dependency.md §6.
+linters:
+  enable:
+    - depguard
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+
+linters-settings:
+  depguard:
+    rules:
+      data-plane:
+        files:
+          - "**/internal/scan/**"
+          - "**/internal/findings/**"
+        deny:
+          - pkg: "github.com/enki-offen/chiller/internal/platform"
+            desc: "data plane must not depend on control plane (NFR-02)"
+      domain-kernel:
+        files:
+          - "**/internal/domain/**"
+        deny:
+          - pkg: "github.com/enki-offen/chiller/internal/platform"
+            desc: "domain kernel must import no unit (NFR-02, acyclic)"
+          - pkg: "github.com/enki-offen/chiller/internal/scan"
+            desc: "domain kernel must import no unit (NFR-02, acyclic)"
+          - pkg: "github.com/enki-offen/chiller/internal/findings"
+            desc: "domain kernel must import no unit (NFR-02, acyclic)"
