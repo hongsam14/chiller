@@ -1,0 +1,94 @@
+// Package exec runs one WorkItem through the checkers and aggregates the outcome
+// (US-027, SR-8/9). It owns the Fetch+Cache phase for URL-scoped items (①fetch
+// ②discover ③fetch JS ④ScanContext) and per-checker fault isolation.
+package exec
+
+import (
+	"context"
+
+	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/enki-offen/chiller/internal/scan/fetch"
+	"github.com/enki-offen/chiller/internal/scan/safety"
+)
+
+// Executor runs a WorkItem. The platform schedules; scan executes. ctx carries
+// the scan-level deadline/cancellation into every outbound fetch (SR-8).
+type Executor interface {
+	Run(ctx context.Context, wi domain.WorkItem, cache fetch.ResponseCache) domain.WorkItemOutcome
+}
+
+type executor struct {
+	fetcher    fetch.Fetcher
+	disc       fetch.Discoverer
+	gate       safety.ApprovalGate
+	urlScoped  []domain.Checker
+	hostScoped []domain.Checker
+}
+
+// New builds an Executor over a set of checkers, splitting them by scope (C-6).
+// gate authorizes host-scoped probes (which do their own I/O) before they run,
+// so the fail-closed approval invariant holds on the host path too, not only the
+// URL fetch path (SR-3).
+func New(checkers []domain.Checker, f fetch.Fetcher, d fetch.Discoverer, gate safety.ApprovalGate) Executor {
+	e := &executor{fetcher: f, disc: d, gate: gate}
+	for _, c := range checkers {
+		if c.Scope() == domain.URLScoped {
+			e.urlScoped = append(e.urlScoped, c)
+		} else {
+			e.hostScoped = append(e.hostScoped, c)
+		}
+	}
+	return e
+}
+
+func (e *executor) Run(ctx context.Context, wi domain.WorkItem, cache fetch.ResponseCache) domain.WorkItemOutcome {
+	out := domain.WorkItemOutcome{ID: wi.ID, NotApplicable: map[domain.CheckerID][]domain.CWE{}}
+
+	var sctx domain.ScanContext
+	var checkers []domain.Checker
+
+	if wi.Scope == domain.URLScoped {
+		html, err := e.fetcher.Fetch(ctx, wi.ScanID, wi.Target) // ①
+		if err != nil {
+			// fetch failed ⇒ no URL-scoped checker can run → all tool-failed (SR-8)
+			for _, c := range e.urlScoped {
+				out.Failed = append(out.Failed, c.ID())
+			}
+			return out
+		}
+		var js []*domain.HAREntry
+		for _, jt := range e.disc.Discover(wi.Target, html) { // ②
+			if je, ferr := e.fetcher.Fetch(ctx, wi.ScanID, jt); ferr == nil { // ③ (gated inside Fetch)
+				js = append(js, je)
+			}
+		}
+		sctx = domain.ScanContext{Target: wi.Target, Response: html, DiscoveredJS: js} // ④
+		checkers = e.urlScoped
+	} else {
+		// host-scoped probes do their own outbound I/O — gate the host first, so
+		// nothing runs against an unapproved host (fail-closed, SR-3).
+		if e.gate != nil {
+			if err := e.gate.Authorize(wi.Target); err != nil {
+				for _, c := range e.hostScoped {
+					out.Failed = append(out.Failed, c.ID())
+				}
+				return out
+			}
+		}
+		sctx = domain.ScanContext{Target: wi.Target} // host-scoped: own protocol I/O, Response nil
+		checkers = e.hostScoped
+	}
+
+	for _, c := range checkers { // run independently (SR-8/9)
+		res, err := c.Check(sctx)
+		if err != nil {
+			out.Failed = append(out.Failed, c.ID())
+			continue
+		}
+		out.Findings = append(out.Findings, res.Findings...)
+		if len(res.NotApplicable) > 0 {
+			out.NotApplicable[c.ID()] = res.NotApplicable
+		}
+	}
+	return out
+}
