@@ -6,7 +6,10 @@
 - **Project Type**: Greenfield (new build), informed by a brownfield reference (`coolant`)
 - **Start Date**: 2026-07-08
 - **Current Stage**: ✅ All 4 units complete + Build and Test green + Operations (placeholder) reached (2026-07-10). Post-MVP: scan Fetcher retryablehttp resilience DONE. Active follow-ups tracked in Backlog.
-- ⚠️ **Reality check (2026-07-13)**: "code complete" ≠ "scans 26 items". The engine judges **10 of 26** KISA items; the 12 probe-owned items report `tool-failed` (no verdict) because **no OSS probe binary has ever been executed**. See Backlog → TOP PRIORITY. The remaining 4 are delegated by design.
+- ⚠️ **Reality check (2026-07-13)**: "code complete" ≠ "scans 26 items". Two payload-delivery gaps sit under the green build:
+  - **12 probe-owned items**: report `tool-failed` (no verdict) — no OSS probe binary has ever been executed. See Backlog → TOP PRIORITY.
+  - **6 observation items** (PS-008/010/011/012/013/022): signature logic is real but never receives its well-known artifact; 4 report false-clean. See Backlog → HIGH. The remaining 4 items are delegated by design.
+  - **Effective real coverage today ≈ 4 observation items** (PS-003/009/018/023) fully wired; the rest are owner-present but payload-starved.
 - **Driving Plan**: `aidlc-docs/inception/requirements/reference/augmentation_plan.html` — KISA 컴플라이언스 26개 항목 passive-scanner 엔진
 
 ## Mission (from the plan)
@@ -104,6 +107,30 @@ never reached and has zero test coverage.
   Setting `argv` non-nil flips `Adapter.Wired()` and the item moves tool-failed → checked.
 - **Acceptance**: the tool-failed count in the e2e coverage test drops by that probe's owned items
   and `checked` rises; coverage still partitions 26.
+
+### 🟠 HIGH — Observation well-known-path GETs are not wired (FR-03/FR-05 gap)
+**6 of the 10 observation items are effectively inert on a normal scan, and 4 of those report
+false-clean.** The signature *logic* is real (unlike the probe stubs), but the engine only ever
+judges the response of the **submitted URL**. `ingest.go` does no discovery beyond `<script src>`
+JS, and nothing synthesizes the well-known artifacts these signatures need.
+
+- **FR-03 requires "benign GET (including well-known paths)"** and the driving plan says explicitly
+  "robots.txt를 다시 요청해 매칭", "crossdomain.xml을 요청해 검사". This is **not** crawling
+  (FR-01 permits it) — the implementation simply omitted the well-known-path fetch step.
+- **Observed on a bare-homepage scan** (proven by `TestE2E_UnwiredProbes…` counts: N/A=4, checked=6):
+  - Genuinely assessed: PS-009 (comments+JS), PS-018 (session-in-URL) — payload *is* the submitted page.
+  - **False-clean** (report "checked, no issue" without ever requesting the artifact):
+    **PS-008 robots.txt · PS-011 .env · PS-012 backup files · PS-022 crossdomain.xml**.
+  - Path-guarded, so N/A instead of false-clean (less harmful but still never actively fetched):
+    PS-010 `.git`, PS-013 `/admin`.
+- **Right fix (NOT interim N/A — these items ARE applicable to the host):** a host-scoped
+  well-known-path provider that GETs `/robots.txt`, `/.env`, `/.git/config`, `/crossdomain.xml`,
+  a small pinned backup-name list, `/admin` (approved hosts only, rate-budgeted) and feeds each
+  response to the owning signature. New component (e.g. `WellKnownProvider`) + fan-out + tests.
+- Also correct the misleading `observation.Default()` comment that calls these "safe stubs" — they
+  are real anchors, just starved of input.
+- **Acceptance**: on a target that actually exposes `/robots.txt`, `/.env`, etc., the corresponding
+  PS item flips to a real finding; coverage still partitions 26; anchors stay tight (no new FPs).
 
 ### Done
 - **retryablehttp-go for scan Fetcher resilience** — ✅ **DONE 2026-07-10**. Adopted `github.com/projectdiscovery/retryablehttp-go v1.3.17` in `internal/scan/fetch`: gated client wrapped with bounded exponential backoff, default `WithRetries(2)`. **Rate-budget constraint honored**: `checkRetry` charges `lim.Acquire(host)` per retry → each attempt spends one token (test-proven, no SR-4 bypass). Redirect re-gate preserved on both HTTPClient + the HTTP/2 fallback (`HTTPClient2` pointed at the same gated client → no fail-open seam). 5xx not retried (valid observed response); scope rejection fails fast; per-request ctx deadline remains the SR-8 bound. Tests in `retry_test.go`. Module green (build/vet/test/-race, gofmt, arch-check). Summary appended to `construction/scan/code/business-logic-summary.md`.

@@ -849,3 +849,10 @@ VERIFIED: build/vet/gofmt/arch-check OK, `go test ./...` pass, `-race` clean.
 **Context**: CONSTRUCTION → post-review correctness fix (scan U2 probe + findings coverage accounting).
 
 ---
+## Investigation — Observation well-known-path payload gap (FR-03/FR-05); documented only
+**Timestamp**: 2026-07-13T00:00:00Z
+**User Input**: "observation 단계의 점검 payload도 실제로 점검" → (scope decision) "조사만, 문서화"
+**AI Response**: Investigated whether the observation signatures actually receive the payload they judge. Finding: unlike the probe stubs, the signature logic is REAL (tight regex anchors), but `internal/scan/exec` fetches only the submitted URL (+ `<script src>` JS) and `ingest.go` does no discovery (FR-01), so nothing synthesizes the well-known artifacts. Result: 6 of 10 observation items are inert on a normal scan — PS-008 robots / PS-011 .env / PS-012 backup / PS-022 crossdomain report **false-clean** (checked, no issue, without ever GETting the artifact); PS-010 .git / PS-013 admin return N/A via a path guard (not false-clean but never actively fetched). Only PS-003/009/018/023 are fully wired (payload = the submitted page). This is an implementation gap, NOT a design limit: FR-03 mandates "benign GET (including well-known paths)" and the driving plan says "robots.txt를 다시 요청해" / "crossdomain.xml을 요청해" — a fixed known-path GET set is not crawling and FR-01 permits it. Per user's scope decision, NO code change this turn; the right fix (a host-scoped rate-budgeted WellKnownProvider, NOT returning N/A) is recorded as HIGH in aidlc-state Backlog + infra-plan §3b, and the effective-coverage reality (≈4 fully-wired observation items) noted in the Current Stage reality check. No production code touched.
+**Context**: CONSTRUCTION → investigation of scan U2 observation payload delivery; documentation only.
+
+---

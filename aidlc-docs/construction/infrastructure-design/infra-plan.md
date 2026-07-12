@@ -75,6 +75,40 @@ others via proxy in financial mode.
 
 ---
 
+## 3b. Observation well-known-path GETs (FR-03/FR-05 gap) — **HIGH**
+
+**Status (2026-07-13): the observation engine never requests the well-known artifacts its
+path/artifact signatures need.** Unlike the probes, the signature *logic* is real (tight regex
+anchors, not stubs), but `internal/scan/exec` only fetches the **submitted URL** (plus `<script src>`
+JS), and `ingest.go` does no discovery (FR-01). So 6 of the 10 observation items only fire if the
+operator happens to submit the exact artifact URL.
+
+On a normal single-page scan:
+- **False-clean** (report "checked, no issue" without ever GETting the artifact): **PS-008 robots.txt,
+  PS-011 .env, PS-012 backup files, PS-022 crossdomain.xml**.
+- Path-guarded → N/A (never actively fetched, but not false-clean): **PS-010 `.git`, PS-013 `/admin`**.
+- Fully wired (payload = the submitted page): PS-003, PS-009, PS-018, PS-023.
+
+This is a genuine **implementation gap, not a design limit**: FR-03 mandates "benign GET (**including
+well-known paths**)" and the driving plan says "robots.txt를 다시 요청해", "crossdomain.xml을 요청해".
+Requesting a fixed known-path set is not crawling — FR-01 permits it.
+
+Work:
+- Add a **host-scoped well-known-path provider** (e.g. `WellKnownProvider`) that, per approved host,
+  enumerates a pinned path set (`/robots.txt`, `/.env`, `/.git/config`, `/crossdomain.xml`, a small
+  backup-name list, `/admin`), GETs each through the **rate-budgeted, gated** fetcher, and routes each
+  response to the owning signature. Bound the fan-out; approved hosts only (SR-3); no crawling.
+- Route each well-known response into the matching signature's `Judge` (the anchors already exist).
+- Correct the misleading `observation.Default()` comment that labels these "safe stubs".
+- **Do NOT "fix" this by returning N/A** — these items ARE applicable to the host; N/A would be a
+  different lie. The only honest states are a real GET (→ Checked/finding) or, until then, an explicit
+  not-assessed/tool-failed classification.
+
+Acceptance: against a target exposing `/robots.txt`, `/.env`, etc., the owning PS item flips to a real
+finding; coverage still partitions 26; anchors stay tight (no new false positives on ordinary pages).
+
+---
+
 ## 4. Dynamic JS asset discovery (Post-MVP, r5/A-6/HC1)
 
 MVP: `fetch.StaticDiscoverer` (parses `<script src>`, capped fan-out). Deferred:
