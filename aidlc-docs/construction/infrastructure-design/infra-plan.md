@@ -47,14 +47,31 @@ Acceptance: an HTTPS financial scan routes every worker through the one authenti
 
 ---
 
-## 3. Probe CLI binaries + real parsers (SECURITY-10, C-5)
+## 3. Probe CLI binaries + real parsers (SECURITY-10, C-5) — **TOP PRIORITY (§7 #1)**
 
-All 7 probe adapters are **stubs** (`argv nil` → run clean, no finding). Infra/Build:
-- **Bundle version-pinned binaries**: humble, httpx, testssl.sh, dirhunt, changeme, Corsy, subzy (`version: "pinned@build"` placeholder today).
-- **Author real `argv` + `Parser`** per tool (turn tool stdout → `domain.Finding`). The runner framework (subprocess exec + timeout + `HTTP_PROXY` env injection) is **already real and tested** — only `argv`/`parse` are missing.
+**Status (2026-07-13): no OSS tool has ever been executed as a subprocess.** All 7 probe
+adapters are unwired (`argv == nil`), no parser is authored (`stubParse` → `nil, nil`), and the
+Dockerfile installs none of the binaries. The runner's `defaultExec` (real `exec.CommandContext`)
+is therefore never reached in any code path, and has no test coverage.
+
+**Consequence — the 12 items these probes own are NOT judged.** They are reported
+`StatusToolFailed` ("chiller obtained no verdict"), which is honest but means only **10 of the
+26 KISA items** are actually judged today. (Before 2026-07-13 an unwired probe returned
+`(empty, nil)` and its items were reported **`StatusChecked`** — i.e. *clean* — turning every
+weakness they own into a silent false negative. Fixed: `probe.ErrNotWired`, guarded by
+`TestE2E_UnwiredProbes_ReportedAsToolFailed_NotChecked`. **Do not regress this**: an adapter that
+cannot execute must fail, never return an empty clean result.)
+
+Infra/Build work:
+- **Bundle version-pinned binaries**: humble, httpx, testssl.sh, dirhunt, changeme, Corsy, subzy (`version: "pinned@build"` is a placeholder today; the Dockerfile has no install steps).
+- **Author real `argv` + `Parser`** per tool (tool stdout → `domain.Finding`). The runner framework (subprocess exec + timeout + `HTTP_PROXY` env injection) is **already real and unit-tested with an injected exec fn** — only `argv`/`parse`/the binary are missing. Setting `argv` non-nil automatically flips `Adapter.Wired()` and stops the ErrNotWired failure.
 - `probe.ConfigureProxy` env injection (done) takes effect automatically once `argv` is non-nil.
+- **Exercise `defaultExec` at least once for real** (e.g. an integration test against a pinned binary) — the actual `os/exec` path is currently unproven.
 
-Acceptance: each adapter parses its real tool output into findings with the correct CWE(s); coverage still partitions 26 items; testssl runs direct, others via proxy in financial mode.
+Acceptance: each adapter parses its real tool output into findings with the correct CWE(s);
+coverage still partitions 26 items; **the count of `tool-failed` items drops by that probe's
+owned items and `checked` rises** (assert in `TestE2E_UnwiredProbes_…`); testssl runs direct,
+others via proxy in financial mode.
 
 ---
 
@@ -83,9 +100,18 @@ Acceptance: discovers dynamically-injected first-party JS the static parser miss
 ---
 
 ## 7. Suggested execution order (highest leverage first)
-1. **WorkQueue→Redis** + **TaskStore→Mongo** (§1 #1–2) — durability + real manager/worker split; reuse contract suites.
-2. **FindingsStore→Mongo** + **ResponseCache→Valkey** (§1 #6, #5) — persistence + cross-process cache, at-rest encryption.
-3. **Probe binaries + parsers** (§3) — turns stubs into real findings; biggest coverage-fidelity gain.
+
+> **#1 is not optional and not merely "nice fidelity". Until the probes are wired,
+> chiller judges only 10 of the 26 KISA items.** The other 12 are reported
+> `tool-failed` (no verdict) — correct and honest as of 2026-07-13, but it means
+> the scanner is *half a scanner*. Nothing else on this list changes that.
+
+1. **Probe binaries + real parsers (§3)** — **TOP PRIORITY.** Turns 12 of the 26 items from
+   "no verdict" into actual judgements. This is the single biggest gap between chiller and
+   its stated mission. Everything below is infrastructure around an engine that is still
+   only judging 10 items.
+2. **WorkQueue→Redis** + **TaskStore→Mongo** (§1 #1–2) — ✅ **DONE** (2026-07-11).
+3. **FindingsStore→Mongo** + **ResponseCache→Valkey** (§1 #6, #5) — persistence + cross-process cache, at-rest encryption.
 4. **Financial HTTPS/MITM hardening + LoginKeeper integration** (§2) — required for real financial-sector runs.
 5. **OTel + OIDC/mTLS** (§1 #3–4) — observability + prod auth.
 6. **PlaywrightDiscoverer** (§4), **deploy/NFR reconciliation** (§6).

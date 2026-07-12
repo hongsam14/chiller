@@ -838,3 +838,14 @@ Tests: safe-reclaim PBT reworked to model steal-on-claim (claimable = pending OR
 **Context**: CONSTRUCTION → Code Gen (platform U1 lease), post-review hardening. Green.
 
 ---
+## Correctness fix — unwired probes were accounted as StatusChecked (false negative)
+**Timestamp**: 2026-07-13T00:00:00Z
+**User Input**: "궁금한점. 실제 OSS 툴들을 subprocess로 호출한적은 없잖아" → "stub이 StatusChecked로 집계되는 것부터 고치자. 그리고 최우선 TODO에 실제 probe 연결을 명시"
+**AI Response**: Confirmed and fixed. All 7 probe adapters are unwired (`argv == nil`, `stubParse`, no bundled binary), so `defaultExec` (the real `exec.CommandContext`) has never run in any code path. The stub `Check()` returned `(domain.CheckResult{}, nil)` — indistinguishable from a clean run — so the PR-5 fold set `RanOK` and the 12 probe-owned KISA items were reported **StatusChecked (clean)** while no tool had examined them: a silent false negative per owned weakness. The existing suite could not catch this (the wiring test synthesizes `RanOK` itself and never calls probe `Check()`).
+FIX: added `probe.ErrNotWired` + `Adapter.Wired()`; an unwired adapter now fails → items land **StatusToolFailed ("no verdict")**, preserving the 4-state FR-13 partition (found ∪ n/a ∪ delegated ∪ tool-failed = 26) while telling the truth. `cmd/chiller` now logs a boot WARNING naming the unwired tools and stating their items will read tool-failed, NOT clean; the misleading "boot gate OK: 26 KISA items covered" line now says all items have an *owner*.
+TESTS: `TestE2E_UnwiredProbes_ReportedAsToolFailed_NotChecked` folds real probe outcomes through the real orchestrator and asserts 12 tool-failed / 4 delegated / 10 observation-judged (checked+n/a; the checked-vs-n/a split is target-dependent), plus `TestUnwiredAdapter_FailsWithErrNotWired`. Old `TestStubAdapter_RunsClean` — which pinned the wrong contract — removed.
+DOCS: probe wiring promoted to TOP PRIORITY in `aidlc-state.md` Backlog, `infra-plan.md` §3/§7 (§7 #1), and `production-readiness.md` (new blocking row #0). Recorded honestly that chiller judges **10 of 26** items today.
+VERIFIED: build/vet/gofmt/arch-check OK, `go test ./...` pass, `-race` clean.
+**Context**: CONSTRUCTION → post-review correctness fix (scan U2 probe + findings coverage accounting).
+
+---

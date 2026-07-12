@@ -6,6 +6,7 @@
 - **Project Type**: Greenfield (new build), informed by a brownfield reference (`coolant`)
 - **Start Date**: 2026-07-08
 - **Current Stage**: ✅ All 4 units complete + Build and Test green + Operations (placeholder) reached (2026-07-10). Post-MVP: scan Fetcher retryablehttp resilience DONE. Active follow-ups tracked in Backlog.
+- ⚠️ **Reality check (2026-07-13)**: "code complete" ≠ "scans 26 items". The engine judges **10 of 26** KISA items; the 12 probe-owned items report `tool-failed` (no verdict) because **no OSS probe binary has ever been executed**. See Backlog → TOP PRIORITY. The remaining 4 are delegated by design.
 - **Driving Plan**: `aidlc-docs/inception/requirements/reference/augmentation_plan.html` — KISA 컴플라이언스 26개 항목 passive-scanner 엔진
 
 ## Mission (from the plan)
@@ -83,6 +84,28 @@ Q8=B propose IR+COE.
 - **`construction/infrastructure-design/infra-plan.md`** (2026-07-10) — consolidated plan for all deferred Infra work: seam-swap backends (TaskStore→Mongo, WorkQueue→Redis/Valkey, ProgressReporter→OTel, Authorizer→OIDC/mTLS, ResponseCache→Valkey, FindingsStore→Mongo), financial HTTPS/MITM hardening + LoginKeeper integration, probe CLI binaries + real parsers, PlaywrightDiscoverer, topology/deploy/NFR reconciliation. Principle: add impl **beside** the mem impl behind the **same interface**, reuse contract tests, select via `cmd/chiller` flags. Suggested order + acceptance criteria + cross-refs inside. **Pick any item there for the next task.**
 
 ## Backlog
+
+### 🔴 TOP PRIORITY — Wire the 7 probe CLIs for real (infra-plan §3)
+**chiller judges only 10 of the 26 KISA items today.** No OSS tool has ever been executed as a
+subprocess: all 7 probe adapters are unwired (`argv == nil`), every parser is `stubParse`, and the
+Dockerfile installs none of the binaries — so `defaultExec` (the real `exec.CommandContext`) is
+never reached and has zero test coverage.
+
+- **Honesty fix landed 2026-07-13**: an unwired adapter now fails with `probe.ErrNotWired` →
+  its items are reported **`StatusToolFailed` (no verdict)**, not `StatusChecked`. Previously they
+  returned `(empty, nil)` and were accounted as **checked/clean**, so 12 of the 26 items were
+  silently reported clean without any tool ever running — a false negative for every weakness they
+  own. Guarded by `TestE2E_UnwiredProbes_ReportedAsToolFailed_NotChecked` (asserts 12 tool-failed /
+  4 delegated / 10 judged) + `TestUnwiredAdapter_FailsWithErrNotWired`. `cmd/chiller` warns at boot.
+  **Do not regress**: an adapter that cannot execute must fail, never return an empty clean result.
+- **Remaining work** (per tool: humble, httpx, testssl.sh, dirhunt, changeme, Corsy, subzy):
+  bundle the version-pinned binary in the image · author `argv` + a real `Parser` (stdout →
+  `domain.Finding` with correct CWEs) · exercise `defaultExec` against a real binary at least once.
+  Setting `argv` non-nil flips `Adapter.Wired()` and the item moves tool-failed → checked.
+- **Acceptance**: the tool-failed count in the e2e coverage test drops by that probe's owned items
+  and `checked` rises; coverage still partitions 26.
+
+### Done
 - **retryablehttp-go for scan Fetcher resilience** — ✅ **DONE 2026-07-10**. Adopted `github.com/projectdiscovery/retryablehttp-go v1.3.17` in `internal/scan/fetch`: gated client wrapped with bounded exponential backoff, default `WithRetries(2)`. **Rate-budget constraint honored**: `checkRetry` charges `lim.Acquire(host)` per retry → each attempt spends one token (test-proven, no SR-4 bypass). Redirect re-gate preserved on both HTTPClient + the HTTP/2 fallback (`HTTPClient2` pointed at the same gated client → no fail-open seam). 5xx not retried (valid observed response); scope rejection fails fast; per-request ctx deadline remains the SR-8 bound. Tests in `retry_test.go`. Module green (build/vet/test/-race, gofmt, arch-check). Summary appended to `construction/scan/code/business-logic-summary.md`.
 
 ### 🟡 OPERATIONS PHASE

@@ -7,8 +7,14 @@ The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Belo
 
 ## Mandatory before production (blocking)
 
+> **#0 dominates this list.** chiller currently judges **10 of the 26 KISA items**. The other 12
+> are owned by probes that have never executed — every report marks them `tool-failed`
+> (no verdict). Shipping this as a "KISA passive scanner" without wiring the probes would
+> hand customers a report that is silent on 12 items.
+
 | # | Action | Why | Where |
 |---|---|---|---|
+| 0 | **Wire the 7 probe CLIs** — bundle the version-pinned binaries, author `argv` + real `Parser` per tool, and exercise `defaultExec` for real once | **No OSS tool has ever been run as a subprocess.** All 7 adapters are `argv == nil`, every parser is `stubParse`, and the Dockerfile installs no binaries — so the 12 items they own are never judged. (They now fail loudly with `probe.ErrNotWired` → `tool-failed`, so the report is honest; before 2026-07-13 they were reported **Checked/clean**, a silent false negative.) | `internal/scan/checking/probe/adapters.go`, `Dockerfile`; plan in infra-plan §3 |
 | 1 | **Run the Docker-backed integration suite** — `make test-integration` in a CI job with a Docker daemon | The Mongo/Valkey contract suites compile but were **never executed** (no Docker in the authoring env). Until they pass against real containers, the durable backends are unverified. | `internal/platform/{taskstore,workqueue}/*_test.go` (`//go:build integration`) |
 | 2 | **Bump the Go toolchain to ≥ 1.26.5 and rebuild** | `govulncheck` flagged **GO-2026-5856** (crypto/tls ECH privacy leak) on our call paths (proxy/fetch/Mongo/Valkey TLS). Fixed in go1.26.5. No source change needed. | build pipeline / Dockerfile base |
 | 3 | **Replace every image tag with a digest** (`@sha256:…`); no `latest` | SECURITY-10/13 supply-chain integrity | `Dockerfile`, `deploy/k8s/*.yaml`, `deploy/compose/docker-compose.yml` |
