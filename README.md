@@ -74,11 +74,11 @@ Submit a scan:
 
 ```bash
 curl -X POST localhost:8080/scans \
-  -H 'Authorization: Bearer dev-token' \
+  -H 'Authorization: ******' \
   -d '{"urls":["https://example.com"],"approved":["example.com"]}'
 # => 202 {"scanId":"scan-a1b2c3d4"}
 
-curl localhost:8080/scans/scan-a1b2c3d4/report -H 'Authorization: Bearer dev-token'
+curl localhost:8080/scans/scan-a1b2c3d4/report -H 'Authorization: ******'
 ```
 
 A read-only ops dashboard is served at `/ui`.
