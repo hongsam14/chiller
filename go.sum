@@ -221,8 +221,8 @@ github.com/testcontainers/testcontainers-go v0.43.0 h1:oEQx5MW2DGd9z3AeEQfB2lPM0
 github.com/testcontainers/testcontainers-go v0.43.0/go.mod h1:+VxkT2NQnKOZPKi6praMuMKYHYyOGXr0XSBSlSMCzFo=
 github.com/testcontainers/testcontainers-go/modules/mongodb v0.37.0 h1:drGy4LJOVkIKpKGm1YKTfVzb1qRhN/konVpmuUphq0k=
 github.com/testcontainers/testcontainers-go/modules/mongodb v0.37.0/go.mod h1:e9/4dGJfSZW59/kXGf/ksrEvA+BqP/daax0Usp2cpsM=
-github.com/testcontainers/testcontainers-go/modules/redis v0.37.0 h1:9HIY28I9ME/Zmb+zey1p/I1mto5+5ch0wLX+nJdOsQ4=
-github.com/testcontainers/testcontainers-go/modules/redis v0.37.0/go.mod h1:Abu9g/25Qv+FkYVx3U4Voaynou1c+7D0HIhaQJXvk6E=
+github.com/testcontainers/testcontainers-go/modules/redis v0.43.0 h1:qzATMhrltLr07KcGl/d674ouqI0AFtf6wnQb3VnqP7M=
+github.com/testcontainers/testcontainers-go/modules/redis v0.43.0/go.mod h1:ygEcEUIZzmIlOKpjBfnPn/lUIRNorr1kPj3XfFPTQXM=
 github.com/tidwall/assert v0.1.0 h1:aWcKyRBUAdLoVebxo95N7+YZVTFF/ASTr7BN4sLP6XI=
 github.com/tidwall/assert v0.1.0/go.mod h1:QLYtGyeqse53vuELQheYl9dngGCJQ+mTtlxcktb+Kj8=
 github.com/tidwall/btree v1.4.3 h1:Lf5U/66bk0ftNppOBjVoy/AIPBrLMkheBp4NnSNiYOo=

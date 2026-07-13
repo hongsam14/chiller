@@ -8,7 +8,7 @@ require (
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.37.0
-	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0
+	github.com/testcontainers/testcontainers-go/modules/redis v0.43.0
 	go.mongodb.org/mongo-driver v1.17.9
 	gopkg.in/yaml.v3 v3.0.1
 )
