@@ -236,7 +236,10 @@ func serveAPI(ctx context.Context, f flags, orch *orchestrator.Orchestrator, be 
 		api.WithScanStore(be.store),
 		api.WithPersistenceStats(persistenceStats{metrics: metrics, stats: be.stats, retry: be.retry}),
 	)
-	srv := &http.Server{Addr: f.addr, Handler: h}
+	// ReadHeaderTimeout bounds header-read time so a client that dribbles headers
+	// cannot hold a connection open indefinitely (Slowloris). 10s is generous
+	// next to the 20s per-request scan deadline (SR-8).
+	srv := &http.Server{Addr: f.addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

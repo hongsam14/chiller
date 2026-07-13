@@ -67,11 +67,15 @@ func LoadSeverity(r io.Reader) (*SeverityConfig, error) {
 
 // LoadSeverityFile is a path convenience over LoadSeverity.
 func LoadSeverityFile(path string) (*SeverityConfig, error) {
+	// #nosec G304 -- path is an operator-supplied config location (a CLI flag),
+	// inside the trust boundary. It is not user input, and constraining it to a
+	// fixed directory would break the legitimate case of configs living elsewhere
+	// while buying no real defence.
 	fh, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }() // read-only: a failed close cannot lose data
 	return LoadSeverity(fh)
 }
 

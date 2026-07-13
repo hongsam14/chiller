@@ -38,10 +38,14 @@ func LoadCoverageSpec(r io.Reader) (domain.CoverageSpec, error) {
 
 // LoadCoverageSpecFile is a path convenience over LoadCoverageSpec.
 func LoadCoverageSpecFile(path string) (domain.CoverageSpec, error) {
+	// #nosec G304 -- path is an operator-supplied config location (a CLI flag),
+	// inside the trust boundary. It is not user input, and constraining it to a
+	// fixed directory would break the legitimate case of configs living elsewhere
+	// while buying no real defence.
 	fh, err := os.Open(path)
 	if err != nil {
 		return domain.CoverageSpec{}, err
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }() // read-only: a failed close cannot lose data
 	return LoadCoverageSpec(fh)
 }

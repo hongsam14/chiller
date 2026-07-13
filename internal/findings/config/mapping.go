@@ -68,11 +68,15 @@ func LoadMapping(r io.Reader) (*MappingTable, error) {
 
 // LoadMappingFile is a path convenience over LoadMapping.
 func LoadMappingFile(path string) (*MappingTable, error) {
+	// #nosec G304 -- path is an operator-supplied config location (a CLI flag),
+	// inside the trust boundary. It is not user input, and constraining it to a
+	// fixed directory would break the legitimate case of configs living elsewhere
+	// while buying no real defence.
 	fh, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }() // read-only: a failed close cannot lose data
 	return LoadMapping(fh)
 }
 
