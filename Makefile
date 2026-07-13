@@ -1,6 +1,6 @@
 .PHONY: build test test-integration lint gosec secrets vuln sbom cover arch-check tidy dev-env ci
 
-MODULE := github.com/enki-offen/chiller
+MODULE := github.com/hongsam14/chiller
 
 # --- Tool versions -----------------------------------------------------------
 #

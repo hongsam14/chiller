@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/safety"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/safety"
 	retryablehttp "github.com/projectdiscovery/retryablehttp-go"
 )
 

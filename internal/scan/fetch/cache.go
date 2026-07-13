@@ -8,7 +8,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 // ResponseCache holds fetched responses (HAR) for cross-family reuse within a

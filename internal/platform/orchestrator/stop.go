@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/platform"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/platform"
 )
 
 // StopScan stops a scan (T3/T4, US-…): it CAS-transitions running→stopped (or

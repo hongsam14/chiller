@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/safety"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/safety"
 )
 
 // WithProxy routes the Fetcher's egress through the given proxy (PR-12c): the

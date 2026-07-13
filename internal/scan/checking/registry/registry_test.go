@@ -3,9 +3,9 @@ package registry
 import (
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/checking/observation"
-	"github.com/enki-offen/chiller/internal/scan/checking/probe"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/checking/observation"
+	"github.com/hongsam14/chiller/internal/scan/checking/probe"
 )
 
 func TestRegistry_OwnershipForFindings(t *testing.T) {

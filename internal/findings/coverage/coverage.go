@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/config"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/config"
 )
 
 // CWEOwnership declares which CWEs each checker emits (weakness axis, FQ1).

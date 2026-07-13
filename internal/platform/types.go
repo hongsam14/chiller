@@ -15,8 +15,8 @@ package platform
 import (
 	"time"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/ingest"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/ingest"
 )
 
 // ScanRequest is the raw analysis request. It is exactly the ingest request
