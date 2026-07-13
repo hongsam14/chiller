@@ -2,8 +2,8 @@
 package severity
 
 import (
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/config"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/config"
 )
 
 // Mapper is the SeverityMapper seam (NFR-01).

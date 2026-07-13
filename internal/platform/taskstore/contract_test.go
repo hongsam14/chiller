@@ -7,10 +7,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/platform"
-	"github.com/enki-offen/chiller/internal/platform/taskstore"
-	"github.com/enki-offen/chiller/internal/scan/ingest"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/platform"
+	"github.com/hongsam14/chiller/internal/platform/taskstore"
+	"github.com/hongsam14/chiller/internal/scan/ingest"
 )
 
 // runTaskStoreContract is the implementation-independent behavioral suite for

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/report"
-	"github.com/enki-offen/chiller/internal/platform"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/report"
+	"github.com/hongsam14/chiller/internal/platform"
 )
 
 // fakeOrch is a scripted Orchestrator for handler tests.

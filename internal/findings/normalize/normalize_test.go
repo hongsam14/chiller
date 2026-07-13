@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 type fakeSev struct{}

@@ -6,8 +6,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/fetch"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/fetch"
 )
 
 // runResponseCacheContract is the implementation-independent behavioral suite for

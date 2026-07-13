@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/store"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/store"
 )
 
 // runFindingsStoreContract is the implementation-independent behavioral suite for

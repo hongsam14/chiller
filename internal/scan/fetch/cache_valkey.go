@@ -28,8 +28,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/enki-offen/chiller/internal/crypto"
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/crypto"
+	"github.com/hongsam14/chiller/internal/domain"
 	"github.com/redis/go-redis/v9"
 )
 

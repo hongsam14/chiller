@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 // ScanRequest is the raw input.

@@ -3,11 +3,11 @@ package orchestrator
 import (
 	"fmt"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/compliance"
-	fconfig "github.com/enki-offen/chiller/internal/findings/config"
-	"github.com/enki-offen/chiller/internal/findings/coverage"
-	"github.com/enki-offen/chiller/internal/scan/checking/registry"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/compliance"
+	fconfig "github.com/hongsam14/chiller/internal/findings/config"
+	"github.com/hongsam14/chiller/internal/findings/coverage"
+	"github.com/hongsam14/chiller/internal/scan/checking/registry"
 )
 
 // BootGate is the startup completeness check (PR-6, FR-N5c): it derives checker

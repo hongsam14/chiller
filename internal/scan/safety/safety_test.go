@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 func TestApprovalGate_RequestOnly(t *testing.T) {
