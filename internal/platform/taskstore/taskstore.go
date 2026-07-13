@@ -160,6 +160,25 @@ func (m *Mem) ListExpiredInflight(_ context.Context, id domain.ScanID, now domai
 
 // RecordOutcome finalizes only if still inflight and owned by `owner` (BR-L5), so
 // a reclaimed straggler cannot overwrite the re-run worker's result.
+// PurgeOutcomeEvidence drops the evidence the ledger still holds for a scan once
+// its findings are stored elsewhere (see the seam doc). The mem store keeps
+// everything in process memory, so there is no at-rest exposure to close here —
+// but it implements the same contract so that a caller cannot behave differently
+// depending on which backend it got.
+func (m *Mem) PurgeOutcomeEvidence(_ context.Context, id domain.ScanID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.ledger {
+		if e.ScanID != id || e.Outcome == nil {
+			continue
+		}
+		for i := range e.Outcome.Findings {
+			e.Outcome.Findings[i].Evidence = domain.Evidence{}
+		}
+	}
+	return nil
+}
+
 func (m *Mem) RecordOutcome(_ context.Context, wid domain.WorkItemID, owner string, o domain.WorkItemOutcome) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

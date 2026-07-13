@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -20,7 +22,7 @@ const MaxEvidenceSnippets = 8
 // never stored here (FR-12); snippets are bounded and redacted before logging or
 // persistence (R9, SECURITY-03).
 type Evidence struct {
-	Snippets []string
+	Snippets []string `bson:"snippets" json:"snippets"`
 }
 
 // Finding is the unit a checker emits — keyed by CWE and framework-agnostic
@@ -31,11 +33,11 @@ type Evidence struct {
 // preserved); FR-06 "no double-judging across checkers" holds structurally
 // because each PS item has exactly one owning checker (DQ1).
 type Finding struct {
-	CWEs       []CWE    // >=1; may be exactly [NoCanonicalCWE]. Store normalized (see NormalizeCWEs).
-	TargetURL  string   // the URL/target this finding is about
-	SourceTool string   // "observation:CWE-615" | "humble" | "httpx" | "testssl" | ...
-	Severity   Severity // must be Valid (R4)
-	Evidence   Evidence // bounded (FR-12)
+	CWEs       []CWE    `bson:"cwes" json:"cwes"`             // >=1; may be exactly [NoCanonicalCWE]. Store normalized (see NormalizeCWEs).
+	TargetURL  string   `bson:"targetUrl" json:"targetUrl"`   // the URL/target this finding is about
+	SourceTool string   `bson:"sourceTool" json:"sourceTool"` // "observation:CWE-615" | "humble" | "httpx" | "testssl" | ...
+	Severity   Severity `bson:"severity" json:"severity"`     // must be Valid (R4)
+	Evidence   Evidence `bson:"evidence" json:"evidence"`     // bounded (FR-12); encrypted at rest (SECURITY-01)
 }
 
 // NormalizeCWEs implements rule R1: deduplicate and sort ascending by numeric
@@ -81,6 +83,20 @@ func NormalizeCWEs(in []CWE) []CWE {
 		}
 	})
 	return real
+}
+
+// FindingKey is a finding's stable, encoding-safe identity: the hex SHA-256 of
+// IdentityKey. A report's framework labels reference findings by this key rather
+// than by their position in the Findings slice, so a report stays correct no
+// matter what order a store returns findings in (C2=B). IdentityKey itself is
+// unsuitable as a wire value — it joins its parts with a 0x1f control character.
+type FindingKey string
+
+// Key returns the finding's FindingKey. Like IdentityKey it normalizes the CWEs
+// first, so it does not depend on the order the checker emitted them in.
+func (f Finding) Key() FindingKey {
+	sum := sha256.Sum256([]byte(f.IdentityKey()))
+	return FindingKey(hex.EncodeToString(sum[:]))
 }
 
 // IdentityKey returns the dedup key (R2). It normalizes the finding's CWEs so

@@ -47,6 +47,18 @@ func (e *executor) Run(ctx context.Context, wi domain.WorkItem, cache fetch.Resp
 	var sctx domain.ScanContext
 	var checkers []domain.Checker
 
+	// An item whose scope did not survive storage is NOT quietly treated as one of
+	// the two real scopes: guessing would run the wrong checker set and then let the
+	// coverage fold record the checkers that never ran as having checked their items.
+	// Fail the item instead — a tool-failed item is visible in the report, a
+	// mis-scoped one is not.
+	if !wi.Scope.Valid() {
+		for _, c := range append(append([]domain.Checker{}, e.urlScoped...), e.hostScoped...) {
+			out.Failed = append(out.Failed, c.ID())
+		}
+		return out
+	}
+
 	if wi.Scope == domain.URLScoped {
 		html, err := e.fetcher.Fetch(ctx, wi.ScanID, wi.Target) // ①
 		if err != nil {

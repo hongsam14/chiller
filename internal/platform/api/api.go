@@ -57,6 +57,37 @@ type Handler struct {
 	inspector platform.QueueInspector
 	store     platform.TaskStore // for the scan list (nil → endpoint reports unavailable)
 	health    []HealthCheck
+	persist   PersistenceStats // for /api/introspect/persistence
+}
+
+// PersistenceStats is what the persistence introspection endpoint reports. It is
+// an interface rather than a struct because the two sets of counters live in two
+// packages that must not see each other (the scan unit does not import platform),
+// so the composition root is the only place that can hold both.
+type PersistenceStats interface {
+	PersistenceSnapshot() PersistenceSnapshot
+}
+
+// PersistenceSnapshot is one reading of the persistence counters.
+type PersistenceSnapshot struct {
+	// Cache reuse. Hits climbing means the single-fetch reuse (FR-02) is working;
+	// all-misses means it is not (often: workers pointed at different caches).
+	CacheHits   int64 `json:"cacheHits"`
+	CacheMisses int64 `json:"cacheMisses"`
+	// CacheErrors is what stops a dead cache from hiding behind fail-open: the
+	// scan still completes, it just refetches everything.
+	CacheErrors int64 `json:"cacheErrors"`
+
+	// Cleanup the orchestrator does at the end of a scan. Both are best-effort, so
+	// a persistent failure of either is otherwise invisible: the scan completes and
+	// quietly leaves response bodies (wipe) or evidence (purge) behind.
+	CacheWipes        int64 `json:"cacheWipes"`
+	CacheWipeErrors   int64 `json:"cacheWipeErrors"`
+	LedgerPurgeErrors int64 `json:"ledgerPurgeErrors"`
+
+	FindingsSaveRetries  int64 `json:"findingsSaveRetries"`
+	FindingsSaveFailures int64 `json:"findingsSaveFailures"`
+	FindingsSaveLastMS   int64 `json:"findingsSaveLastMs"`
 }
 
 // HealthCheck is one named backend liveness probe for the deep /healthz
@@ -86,6 +117,11 @@ func WithIntrospection(q platform.WorkQueue) Option {
 			h.inspector = qi
 		}
 	}
+}
+
+// WithPersistenceStats enables GET /api/introspect/persistence.
+func WithPersistenceStats(p PersistenceStats) Option {
+	return func(h *Handler) { h.persist = p }
 }
 
 // WithScanStore enables the dashboard scan list (/api/introspect/scans) by giving
@@ -136,6 +172,7 @@ func New(authz platform.Authorizer, orch platform.Orchestrator, opts ...Option) 
 	// security headers (SECURITY-04).
 	h.mux.HandleFunc("GET /api/introspect/queue", h.guard(h.introspectQueue))
 	h.mux.HandleFunc("GET /api/introspect/scans", h.guard(h.introspectScans))
+	h.mux.HandleFunc("GET /api/introspect/persistence", h.guard(h.introspectPersistence))
 	h.mux.HandleFunc("GET /ui", h.serveUI)
 	return h
 }

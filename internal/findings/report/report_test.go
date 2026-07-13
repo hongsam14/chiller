@@ -26,8 +26,13 @@ func TestBuild_TwoAxesAndLabels(t *testing.T) {
 	if len(r.Findings) != 1 || len(r.Coverage) != 1 {
 		t.Error("both axes must be present")
 	}
-	idx := r.FrameworkLabels[domain.FrameworkKISA]["PS-009"]
-	if len(idx) != 1 || idx[0] != 0 {
-		t.Errorf("PS-009 label should point at finding 0, got %v", idx)
+	// Labels reference findings by key, not by position — so a report stays correct
+	// no matter what order a store returns its findings in.
+	keys := r.FrameworkLabels[domain.FrameworkKISA]["PS-009"]
+	if len(keys) != 1 || keys[0] != findings[0].Key() {
+		t.Errorf("PS-009 label should carry finding 0's key, got %v", keys)
+	}
+	if r.SchemaVersion != ReportSchemaVersion {
+		t.Errorf("SchemaVersion=%d, want %d", r.SchemaVersion, ReportSchemaVersion)
 	}
 }

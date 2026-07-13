@@ -21,6 +21,15 @@ spec:
             - "--role=worker"
             - "--store=mongo"
             - "--queue=valkey"
+            # Workers fetch, so they are the cache's main user. Every worker MUST
+            # point at the same cache instance (chiller-valkey-cache) or nothing is
+            # reused across them and the target is fetched once per worker (FR-02).
+            - "--cache=valkey"
+            # Workers DO finalize: whichever worker drains the last item of a scan
+            # assembles and stores its findings (maybeFinalize). A worker with
+            # --findings-store=mem would write that scan's results into its own
+            # process memory and lose them, so this is not optional.
+            - "--findings-store=mongo"
             - "--mongo-db=chiller"
           envFrom:
             - secretRef: { name: chiller-secrets }
