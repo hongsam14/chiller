@@ -36,6 +36,7 @@ func (o *Orchestrator) StopScan(ctx context.Context, id domain.ScanID) error {
 
 	_ = o.cfg.Queue.Drain(ctx, id) // drop undispatched items
 	o.cancelScan(id)               // cancel in-flight fetches
+	o.wipeCache(ctx, id)           // a stopped scan leaves the same bodies behind as a completed one (FR-12)
 	return nil
 }
 

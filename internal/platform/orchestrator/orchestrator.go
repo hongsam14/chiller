@@ -41,6 +41,16 @@ type Config struct {
 	Cache         fetch.ResponseCache
 	Frameworks    []domain.Framework
 
+	// CacheStats is handed to each per-scan Fetcher so cache hits, misses and
+	// backend errors are counted where they happen. nil ⇒ not counted.
+	CacheStats *fetch.CacheStats
+
+	// Metrics counts the cleanup the orchestrator performs at the end of a scan
+	// (cache wipe, ledger evidence purge). Both are best-effort — a failure does
+	// not fail the scan — so these counters are the only signal that they are
+	// working. nil ⇒ a throwaway counter set, so tests need not wire one.
+	Metrics *platform.Metrics
+
 	// GlobalAllowlist intersects every scan's Approved set (fail-closed, SR-3).
 	GlobalAllowlist []string
 	// HTTPClient backs the per-scan Fetcher; nil ⇒ a default client.
@@ -80,6 +90,9 @@ var _ platform.Orchestrator = (*Orchestrator)(nil)
 func New(cfg Config) *Orchestrator {
 	if cfg.Workers <= 0 {
 		cfg.Workers = 1
+	}
+	if cfg.Metrics == nil {
+		cfg.Metrics = &platform.Metrics{}
 	}
 	o := &Orchestrator{
 		cfg:        cfg,
@@ -170,11 +183,30 @@ func (o *Orchestrator) GetStatus(ctx context.Context, id domain.ScanID) (platfor
 	return snap, nil
 }
 
+// GetReport assembles the report a caller sees by joining its two owners: the
+// TaskStore holds the skeleton (coverage, framework labels, mapping revision) and
+// the FindingsStore holds the findings. This is the ONLY place the two are joined.
+//
+// The findings from the FindingsStore always win, even if the TaskStore handed
+// back a report that already had some. The in-memory TaskStore keeps whatever it
+// was given, while the Mongo one strips the findings before writing — so without
+// an unconditional overwrite, what a caller got back would depend on which pair of
+// backends happened to be wired, and the mem/Mongo mix would disagree with itself.
+// One owner, one answer.
 func (o *Orchestrator) GetReport(ctx context.Context, id domain.ScanID) (report.Report, bool, error) {
 	if _, err := o.cfg.Store.LoadScan(ctx, id); err != nil {
 		return report.Report{}, false, fmt.Errorf("%w: %v", platform.ErrNotFound, err)
 	}
-	return o.cfg.Store.LoadReport(ctx, id)
+	rep, ok, err := o.cfg.Store.LoadReport(ctx, id)
+	if err != nil || !ok {
+		return rep, ok, err
+	}
+	findings, err := o.cfg.FindingsStore.LoadFindings(ctx, id)
+	if err != nil {
+		return report.Report{}, false, fmt.Errorf("report %q: load findings: %w", id, err)
+	}
+	rep.Findings = findings
+	return rep, true, nil
 }
 
 // buildExecutor constructs and registers the per-scan Executor + scan ctx.
@@ -188,6 +220,9 @@ func (o *Orchestrator) buildExecutor(id domain.ScanID, req platform.ScanRequest,
 		// through the single auth-proxy uniformly (PR-12c). A mixed URL-scoped set
 		// would require splitting the shared fetch — not the case in the MVP.
 		fetchOpts = append(fetchOpts, fetch.WithProxy(o.cfg.ProxyURL))
+	}
+	if o.cfg.CacheStats != nil {
+		fetchOpts = append(fetchOpts, fetch.WithCacheStats(o.cfg.CacheStats))
 	}
 	f := fetch.NewFetcher(gate, lim, o.cfg.Cache, o.cfg.HTTPClient, fetchOpts...)
 	disc := fetch.NewStaticDiscoverer(gate)

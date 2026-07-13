@@ -51,6 +51,16 @@ type TaskStore interface {
 	// uses each item's Scope to know which checkers ran on it.
 	AllItems(ctx context.Context, id domain.ScanID) ([]domain.WorkItem, error)
 	AllOutcomes(ctx context.Context, id domain.ScanID) ([]domain.WorkItemOutcome, error)
+	// PurgeOutcomeEvidence drops the evidence the ledger's outcomes are still
+	// carrying for a scan, leaving the rest of each outcome intact. The ledger is
+	// how a worker's findings reach the manager, so it holds a copy of every
+	// response fragment until the scan finalizes — after which nothing reads it
+	// again. finalize calls this once the findings are durably stored, so a
+	// completed scan's evidence lives in exactly one place (data-census O-2).
+	//
+	// It is safe to call when there is nothing to purge, and it must NOT be called
+	// before the findings are stored: the ledger is the only other copy.
+	PurgeOutcomeEvidence(ctx context.Context, id domain.ScanID) error
 	// ListScansByState returns the ids of scans in a given state. The recovery
 	// sweep uses it (state=running) to drive ResumeScan across process restarts;
 	// the durable backend answers it from the {state} index.

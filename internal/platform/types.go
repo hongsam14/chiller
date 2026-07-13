@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/report"
 	"github.com/enki-offen/chiller/internal/scan/ingest"
 )
 
@@ -104,8 +103,11 @@ func ParseItemState(name string) (ItemState, bool) {
 }
 
 // Scan is the orchestration aggregate — one user analysis request (E-1). It is
-// serializable (E-6 rule 4): plain fields, no funcs/channels. The Report pointer
-// is nil until finalize.
+// serializable (E-6 rule 4): plain fields, no funcs/channels.
+//
+// The report used to be a field here. Nothing ever assigned it — reports are
+// stored in their own collection by SaveReport — so every scan document carried a
+// null "report" field forever. It is gone.
 type Scan struct {
 	ID         domain.ScanID      `bson:"_id"`
 	State      ScanState          `bson:"state"`
@@ -113,7 +115,6 @@ type Scan struct {
 	Frameworks []domain.Framework `bson:"frameworks"`
 	CreatedAt  domain.Timestamp   `bson:"createdAt"`
 	UpdatedAt  domain.Timestamp   `bson:"updatedAt"`
-	Report     *report.Report     `bson:"report"` // set at finalize; nil before
 	// SchemaVersion marks the document layout so a future migration has an
 	// explicit branch point. Current layout = 1.
 	SchemaVersion int `bson:"schemaVersion"`

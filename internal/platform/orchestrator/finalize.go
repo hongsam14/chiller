@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"log"
 
 	"github.com/enki-offen/chiller/internal/domain"
 	"github.com/enki-offen/chiller/internal/findings/coverage"
@@ -27,7 +28,7 @@ func (o *Orchestrator) finalize(ctx context.Context, id domain.ScanID) {
 		raw = append(raw, oc.Findings...)
 	}
 	findings := o.cfg.Deduper.Dedup(raw)
-	if err := o.cfg.FindingsStore.SaveFindings(id, findings); err != nil {
+	if err := o.cfg.FindingsStore.SaveFindings(ctx, id, findings); err != nil {
 		o.fail(ctx, id)
 		return
 	}
@@ -43,8 +44,50 @@ func (o *Orchestrator) finalize(ctx context.Context, id domain.ScanID) {
 		return
 	}
 	// Only now flip to completed: a reader that saw completed can always load the
-	// report. Losing this CAS (another process finalized) is a harmless no-op.
-	_, _ = o.cfg.Store.CompareAndSetState(ctx, id, platform.StateRunning, platform.StateCompleted)
+	// report.
+	won, _ := o.cfg.Store.CompareAndSetState(ctx, id, platform.StateRunning, platform.StateCompleted)
+
+	// Everything above is idempotent — two processes finalizing the same scan write
+	// the same findings and the same report. Purging the ledger is NOT: it destroys
+	// the evidence, and a finalize that read the ledger afterwards would re-save the
+	// same findings with their evidence stripped, overwriting the good documents.
+	//
+	// So only the process that WON the terminal CAS purges. It is the last writer by
+	// construction: every other finalize either already ran its save (with the
+	// evidence still intact, since it read the ledger before this point) or will lose
+	// the CAS and stop here. maybeFinalize's guard is per-process and cannot do this
+	// job — the worker pool spans pods.
+	//
+	// A failed purge costs a redundant copy, not correctness, so it is counted and
+	// logged rather than failing an otherwise-good scan.
+	if won {
+		if err := o.cfg.Store.PurgeOutcomeEvidence(ctx, id); err != nil {
+			o.cfg.Metrics.LedgerPurgeErrors.Add(1)
+			log.Printf("finalize: scan %s: could not purge ledger evidence: %v", id, err)
+		}
+	}
+
+	o.wipeCache(ctx, id)
+}
+
+// wipeCache discards the scan's cached responses (FR-12/NFR-16). Every terminal
+// path calls it — completed, failed and stopped — because a scan that ends badly
+// leaves exactly the same response bodies behind as one that ends well.
+//
+// A failure here does not affect the scan's result, so it is counted and logged
+// rather than propagated. The cache entries also carry a TTL, which is what
+// actually guarantees the bodies go away: if this process dies before it gets
+// here, expiry still collects them.
+func (o *Orchestrator) wipeCache(ctx context.Context, id domain.ScanID) {
+	if o.cfg.Cache == nil {
+		return
+	}
+	if err := o.cfg.Cache.WipeScan(ctx, id); err != nil {
+		o.cfg.Metrics.CacheWipeErrors.Add(1)
+		log.Printf("scan %s: could not wipe response cache: %v", id, err)
+		return
+	}
+	o.cfg.Metrics.CacheWipes.Add(1)
 }
 
 // foldOutcomes implements PR-5: it reconstructs, per owning checker, whether the
@@ -133,14 +176,24 @@ func (o *Orchestrator) itemScopes(ctx context.Context, id domain.ScanID) map[dom
 // checkersForScope returns the checkers that run on an item of the given scope
 // (the same split exec uses): URL-scoped items run every URL-scoped checker;
 // host-scoped items run every host-scoped checker.
+//
+// An invalid scope returns NO checkers rather than falling through to the
+// host-scoped set. This is the fold, so a wrong answer here becomes a wrong
+// compliance record: attributing the host-scoped checkers to an item they never
+// ran on would mark testssl/dirhunt/subzy's PS items as checked.
 func (o *Orchestrator) checkersForScope(s domain.ScopeKind) []domain.Checker {
-	if s == domain.URLScoped {
+	switch s {
+	case domain.URLScoped:
 		return o.urlScoped
+	case domain.HostScoped:
+		return o.hostScoped
+	default:
+		return nil
 	}
-	return o.hostScoped
 }
 
 // fail transitions a scan to failed (unrecoverable finalize error, PR-6/E-2).
 func (o *Orchestrator) fail(ctx context.Context, id domain.ScanID) {
 	_, _ = o.cfg.Store.CompareAndSetState(ctx, id, platform.StateRunning, platform.StateFailed)
+	o.wipeCache(ctx, id)
 }

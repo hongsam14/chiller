@@ -37,8 +37,12 @@ func startValkey(t *testing.T) string {
 
 func fastOpts(suffix string) workqueue.Options {
 	return workqueue.Options{
-		Stream:      "s_" + suffix,
-		Group:       "g_" + suffix,
+		Stream: "s_" + suffix,
+		Group:  "g_" + suffix,
+		// Consume starts the reader that feeds Dequeue. Without it this suite hung
+		// for the full test timeout instead of failing: a queue nobody reads looks
+		// exactly like a queue with nothing in it.
+		Consume:     true,
 		BlockDur:    300 * time.Millisecond,
 		ReaperEvery: 200 * time.Millisecond,
 		MinIdle:     150 * time.Millisecond,
@@ -74,7 +78,10 @@ func TestValkey_StatsReflectsDepth(t *testing.T) {
 		t.Fatal("Valkey must implement QueueInspector")
 	}
 	for i := 0; i < 5; i++ {
-		if err := v.Enqueue(ctx, domain.WorkItem{ID: domain.WorkItemID(strconv.Itoa(i)), ScanID: "s"}); err != nil {
+		if err := v.Enqueue(ctx, domain.WorkItem{
+			ID: domain.WorkItemID(strconv.Itoa(i)), ScanID: "s", Scope: domain.URLScoped,
+			Target: domain.Target{URL: "https://x.test/" + strconv.Itoa(i), Host: "x.test", Scheme: "https"},
+		}); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 	}

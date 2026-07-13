@@ -6,7 +6,7 @@ func TestSeverityOrdering(t *testing.T) {
 	// Info < Low < Medium < High < Critical (R3/R4).
 	ordered := []Severity{SevInfo, SevLow, SevMedium, SevHigh, SevCritical}
 	for i := 1; i < len(ordered); i++ {
-		if !(ordered[i-1] < ordered[i]) {
+		if ordered[i-1] >= ordered[i] {
 			t.Fatalf("severity not strictly increasing at %d: %v !< %v", i, ordered[i-1], ordered[i])
 		}
 	}
@@ -18,13 +18,19 @@ func TestSeverityValid(t *testing.T) {
 			t.Errorf("%v should be Valid", s)
 		}
 	}
-	for _, s := range []Severity{-1, 5, 99} {
+	// SevUnset is the zero value and must never be Valid — a Finding that never
+	// had a severity set (or lost the field in storage) must fail Validate rather
+	// than read as informational.
+	for _, s := range []Severity{SevUnset, -1, 6, 99} {
 		if s.Valid() {
 			t.Errorf("%d should be invalid", s)
 		}
-		if s.String() != "Unknown" {
-			t.Errorf("invalid severity %d String()=%q, want Unknown", s, s.String())
+		if s.String() != "unknown" {
+			t.Errorf("invalid severity %d String()=%q, want unknown", s, s.String())
 		}
+	}
+	if (Finding{CWEs: []CWE{"CWE-1"}, TargetURL: "u", SourceTool: "t"}).Validate() == nil {
+		t.Error("a Finding with no severity set must fail Validate")
 	}
 }
 

@@ -1,0 +1,25 @@
+# Pinning by digest and commit SHA (SECURITY-10/13) has a cost: a pinned base image
+# never picks up a security patch on its own. Without an updater, "pinned" quietly
+# becomes "abandoned" — and since this repo has no nightly schedule (a deliberate
+# choice), nothing else would ever notice.
+#
+# Dependabot opens a PR when a base image or Action moves. That PR runs the full
+# pipeline, and a human merges it. Pinning keeps its integrity guarantee; the
+# staleness it would otherwise cause is what this file pays for.
+version: 2
+
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
