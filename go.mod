@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/playwright-community/playwright-go v0.5200.1
-	github.com/projectdiscovery/retryablehttp-go v1.3.17
+	github.com/projectdiscovery/retryablehttp-go v1.3.18
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.37.0
@@ -70,9 +70,9 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
-	github.com/projectdiscovery/fastdialer v0.5.11 // indirect
+	github.com/projectdiscovery/fastdialer v0.5.12 // indirect
 	github.com/projectdiscovery/hmap v0.0.101 // indirect
-	github.com/projectdiscovery/networkpolicy v0.1.41 // indirect
+	github.com/projectdiscovery/networkpolicy v0.1.42 // indirect
 	github.com/projectdiscovery/retryabledns v1.0.115 // indirect
 	github.com/projectdiscovery/utils v0.11.1 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
