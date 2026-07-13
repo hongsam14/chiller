@@ -193,7 +193,7 @@ func (f *fetcher) Fetch(ctx context.Context, scanID domain.ScanID, t domain.Targ
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s: %w", t.URL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // response body: a failed close cannot lose data
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, f.maxBody))
 	if err != nil {

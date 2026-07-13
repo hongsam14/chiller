@@ -25,7 +25,7 @@ func TestFetcher_FetchAndCacheReuse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits++
 		http.SetCookie(w, &http.Cookie{Name: "sid", Value: "1"}) // no Secure/HttpOnly
-		w.Write([]byte("<html><script src=\"/app.js\"></script></html>"))
+		_, _ = w.Write([]byte("<html><script src=\"/app.js\"></script></html>"))
 	}))
 	defer srv.Close()
 

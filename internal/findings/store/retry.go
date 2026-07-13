@@ -83,7 +83,19 @@ func (r *Retry) LoadFindings(ctx context.Context, scanID domain.ScanID) ([]domai
 // sleep waits out the backoff for the given attempt, or returns early if the
 // context is done — a cancelled scan must not sit in a backoff loop.
 func (r *Retry) sleep(ctx context.Context, attempt int) error {
-	d := r.base << uint(2*(attempt-1)) // 1x, 4x, 16x
+	// The guard belongs here, not in the caller: with attempt < 1 the old
+	// `base << uint(2*(attempt-1))` wrapped the shift count to a huge uint and
+	// collapsed the backoff to zero — a retry storm against a store that is
+	// already failing.
+	if attempt < 1 {
+		attempt = 1
+	}
+	// Quadruple per attempt (1x, 4x, 16x). Written as repeated multiplication
+	// rather than a shift so there is no int→uint conversion to get wrong.
+	d := r.base
+	for i := 1; i < attempt; i++ {
+		d *= 4
+	}
 	jitter := time.Duration(r.rng() * float64(d) * 0.2)
 	t := time.NewTimer(d + jitter)
 	defer t.Stop()

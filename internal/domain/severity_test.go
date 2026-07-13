@@ -6,7 +6,7 @@ func TestSeverityOrdering(t *testing.T) {
 	// Info < Low < Medium < High < Critical (R3/R4).
 	ordered := []Severity{SevInfo, SevLow, SevMedium, SevHigh, SevCritical}
 	for i := 1; i < len(ordered); i++ {
-		if !(ordered[i-1] < ordered[i]) {
+		if ordered[i-1] >= ordered[i] {
 			t.Fatalf("severity not strictly increasing at %d: %v !< %v", i, ordered[i-1], ordered[i])
 		}
 	}
