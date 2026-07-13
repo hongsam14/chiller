@@ -9,7 +9,7 @@ metadata:
 spec:
   podSelector:
     matchExpressions:
-      - { key: role, operator: In, values: ["mongo", "valkey-queue"] }
+      - { key: role, operator: In, values: ["mongo", "valkey-queue", "valkey-cache"] }
   policyTypes: ["Ingress"]
   ingress:
     - from:

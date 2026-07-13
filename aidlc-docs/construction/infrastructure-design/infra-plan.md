@@ -83,14 +83,15 @@ Acceptance: discovers dynamically-injected first-party JS the static parser miss
 ---
 
 ## 7. Suggested execution order (highest leverage first)
-1. **WorkQueue→Redis** + **TaskStore→Mongo** (§1 #1–2) — durability + real manager/worker split; reuse contract suites.
-2. **FindingsStore→Mongo** + **ResponseCache→Valkey** (§1 #6, #5) — persistence + cross-process cache, at-rest encryption.
+1. ~~**WorkQueue→Redis** + **TaskStore→Mongo** (§1 #1–2)~~ — ✅ **DONE 2026-07-11**.
+2. ~~**FindingsStore→Mongo** + **ResponseCache→Valkey** (§1 #6, #5)~~ — ✅ **DONE 2026-07-13** (persistence 증분). 부수 효과로 3개 기존 결함 해소: WipeScan 미배선(FR-12 미작동) · evidence 평문 durable 저장(원장 포함) · int-iota enum 오염. 자세한 내용은 `construction/persistence/`.
 3. **Probe binaries + parsers** (§3) — turns stubs into real findings; biggest coverage-fidelity gain.
 4. **Financial HTTPS/MITM hardening + LoginKeeper integration** (§2) — required for real financial-sector runs.
 5. **OTel + OIDC/mTLS** (§1 #3–4) — observability + prod auth.
 6. **PlaywrightDiscoverer** (§4), **deploy/NFR reconciliation** (§6).
 
 ## 8. Already done (do NOT redo)
+- **FindingsStore→Mongo + ResponseCache→Valkey (persistence 증분, 2026-07-13)**. `findings` 전용 컬렉션(정본, evidence 봉인) · `reports`는 골격만 · `workledger`의 evidence도 봉인 + finalize 시 소멸(사본 3→1) · Valkey-cache 전용 인스턴스(값 전체 봉인, TTL, 3개 종료 경로에서 wipe) · `internal/crypto` AES-256-GCM 봉투(AAD 바인딩, 키 회전) · int-iota enum 3종 이름 저장 + 제로값 sentinel · `FrameworkLabels` → FindingKey · `/api/introspect/persistence`. **데이터 소유권 규칙 O-1..O-4 + `construction/persistence/data-census.md`(살아있는 대장) 발효 — 새 저장 싱크는 census에 먼저 등재할 것.**
 - Native scan Fetcher resilience via `retryablehttp-go` (retries charge the per-host budget; redirect re-gate on both client paths; 5xx not retried). See `construction/scan/code/business-logic-summary.md`.
 - Transport-driven probe `HTTP_PROXY` env injection wiring (`probe.ConfigureProxy`) + native fetch `WithProxy`. Mechanism real+tested; effective once real binaries land.
 - All 4 units + Build & Test green; Operations (placeholder) reached.

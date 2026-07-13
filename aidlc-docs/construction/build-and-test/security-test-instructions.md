@@ -80,3 +80,36 @@ No third-party dependency on any call path is affected (15 further advisories ex
 ```bash
 make sbom   # syft → sbom.cyclonedx.json (required for production images)
 ```
+
+---
+
+## r3 추가 (persistence 증분)
+
+### 6. 봉투 암호화 (`internal/crypto`) — AES-256-GCM
+
+| 속성 | 테스트 | 왜 |
+|---|---|---|
+| 암복호 항등 | `TestPBT_SealOpenRoundTrip` | 기본 |
+| **AAD 불일치 시 반드시 실패** | `TestPBT_WrongAADAlwaysFails` | 봉투를 **다른 finding/URL로 옮겨 붙이는 것**을 차단. 캐시 오염이 미탐으로 이어지는 경로를 막는다 |
+| **변조 검출** | `TestPBT_TamperedCiphertextFails` | AEAD — 복호화가 곧 무결성 검증 (SECURITY-13). 저장소 쓰기 권한을 얻은 자가 evidence를 조작하지 못한다 |
+| **nonce 유일성** | `TestSeal_FreshNonceEachTime` (1000회) | GCM에서 nonce 재사용은 기밀성을 통째로 파괴한다 |
+| **키 회전 정합** | `TestNewKeyring_MultiKeyRequiresExplicitIDs` | 위치 기반 id는 회전 시 **기존 봉투를 틀린 키로 열게** 만든다 → 키 2개 이상이면 id 필수 |
+| **fail-closed** | `TestNewMongo_RequiresAKeyring` | 키 없이 durable 백엔드를 켜면 **기동 거부** (SECURITY-15) |
+
+**키 관리**: `CHILLER_EVIDENCE_KEY` (base64 32B). K8s Secret/볼트 주입만. 회전은 `"k2:<new>,k1:<old>"`.
+소스·이미지·매니페스트에 **하드코딩 금지** (compose의 dev 키는 로컬 전용이며 그렇게 명시돼 있다).
+
+### 7. 데이터 잔존 (FR-12/NFR-16) — **이번 증분이 처음으로 실제 작동시킴**
+
+- **회귀**: `TestFinalize_WipesCache` · `TestFail_WipesCache` · `TestStop_WipesCache` —
+  세 종료 경로 각각에서 캐시 잔존 0을 단언. (증분 전에는 `WipeScan`이 **어디에서도 호출되지 않았다**)
+- **in-flight 누수**: `TestFetcher_DoesNotCacheAfterTheScanWasCancelled` — stop 후 진행 중이던 fetch가 wipe된 캐시를 다시 채우지 못한다
+- **백스톱**: 모든 캐시 키에 TTL(기본 6h) — 프로세스가 죽어 wipe를 못 해도 만료로 사라진다
+- **evidence 사본**: 정상 종료 후 **1벌**(`findings` 컬렉션, 봉인). 원장 사본은 finalize에서 소멸 (`data-census.md` 규칙 O-2)
+
+### 8. 남는 노출 (정직한 기록 — `data-census.md` §6)
+
+- **URL은 평문**이다. 인덱스·재개·감사·귀속에 필요해 암호화할 수 없다. 쿼리스트링에 토큰이 실리면 노출된다 →
+  TLS in-transit + 컬렉션/키 최소권한 + **로그 redaction**(R9)이 유일한 방어
+- **워커 프로세스 메모리의 평문** — fetch와 regex 탐색에 불가피 (범위 밖)
+- **실패·중단 스캔의 원장 evidence** — 재개를 위해 남지만 **봉인되어 있다**

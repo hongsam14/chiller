@@ -18,24 +18,39 @@ services:
 
   valkey-cache:
     image: valkey/valkey:8
-    # volatile cache: LRU eviction (ResponseCache, #5 — separate instance, Q9=C).
-    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru"]
+    # Volatile ResponseCache — a SEPARATE instance from the queue on purpose. The
+    # two want opposite policies: the queue must never evict (a dropped work item
+    # is a lost item) and the cache must be free to (a dropped entry is a refetch).
+    # Sharing one instance means one of those policies is wrong.
+    command: ["valkey-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     ports: ["6380:6379"]
 
   chiller:
     build:
       context: ../..
       dockerfile: Dockerfile
-    depends_on: [mongo, valkey-queue]
+    depends_on: [mongo, valkey-queue, valkey-cache]
     environment:
       CHILLER_MONGO_URI: "mongodb://mongo:27017/?w=majority"
       CHILLER_VALKEY_ADDR: "valkey-queue:6379"
-      CHILLER_TOKEN: "dev-token-change-me"
+      CHILLER_VALKEY_CACHE_ADDR: "valkey-cache:6379"
+      # Credentials come from deploy/compose/.env (gitignored) — never from this
+      # file. `cp .env.example .env` to get the local dev values. The `:?` form
+      # aborts with the message instead of starting with an empty key, because a
+      # silently-empty evidence key would seal nothing.
+      CHILLER_TOKEN: ${CHILLER_TOKEN:?run: cp .env.example .env}
+      # Evidence and cached responses are sealed with this key (32 bytes, base64).
+      # A lone un-prefixed key is "k1". To rotate, name every entry:
+      # CHILLER_EVIDENCE_KEY="k2:<new>,k1:<old>" — the first seals new values, the
+      # rest stay available to open existing ones.
+      CHILLER_EVIDENCE_KEY: ${CHILLER_EVIDENCE_KEY:?run: cp .env.example .env}
     command:
       - "--role=all"
       - "--addr=0.0.0.0:8080"
       - "--store=mongo"
       - "--queue=valkey"
+      - "--findings-store=mongo"
+      - "--cache=valkey"
       - "--token=dev-token-change-me"
     ports: ["8080:8080"]
 

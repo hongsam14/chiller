@@ -21,6 +21,10 @@ spec:
             - "--addr=0.0.0.0:8080"
             - "--store=mongo"
             - "--queue=valkey"
+            - "--findings-store=mongo"
+            # The manager needs a cache handle even though it does not fetch: it is
+            # what wipes a scan's cached responses when the scan ends (FR-12).
+            - "--cache=valkey"
             - "--mongo-db=chiller"
           envFrom:
             - secretRef: { name: chiller-secrets }

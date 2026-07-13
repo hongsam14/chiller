@@ -27,11 +27,32 @@ func runWorkQueueContract(t *testing.T, newQueue func() platform.WorkQueue) {
 	t.Run("PBT_EnqueueDequeueMultiset", func(t *testing.T) { testEnqDeqMultiset(t, newQueue()) })
 }
 
+// enq enqueues a work item and FAILS the test if the queue rejects it.
+//
+// The suite used to discard Enqueue's error, and a scoped item used to be
+// indistinguishable from an unscoped one — so when a WorkItem became unencodable
+// (a scope is now required, since an item that cannot say which checkers it belongs
+// to cannot be routed), the durable queue rejected every item, Dequeue blocked
+// forever, and the suite hung for 25 minutes instead of failing in a second.
+// Enqueue's error is part of the contract; ignoring it hides exactly this.
+func enq(t *testing.T, q platform.WorkQueue, ctx context.Context, id domain.WorkItemID, scanID domain.ScanID) {
+	t.Helper()
+	item := domain.WorkItem{
+		ID:     id,
+		ScanID: scanID,
+		Scope:  domain.URLScoped,
+		Target: domain.Target{URL: "https://x.test/" + string(id), Host: "x.test", Scheme: "https"},
+	}
+	if err := q.Enqueue(ctx, item); err != nil {
+		t.Fatalf("enqueue %q: %v", id, err)
+	}
+}
+
 // A single dequeuer observes items in enqueue order (an ordered stream / FIFO).
 func testFIFO(t *testing.T, q platform.WorkQueue) {
 	ctx := context.Background()
 	for _, id := range []domain.WorkItemID{"a", "b", "c"} {
-		_ = q.Enqueue(ctx, domain.WorkItem{ID: id, ScanID: "s"})
+		enq(t, q, ctx, id, "s")
 	}
 	for _, want := range []domain.WorkItemID{"a", "b", "c"} {
 		got, err := q.Dequeue(ctx)
@@ -55,7 +76,7 @@ func testBlocks(t *testing.T, q platform.WorkQueue) {
 		t.Fatal("dequeue returned before any enqueue")
 	case <-time.After(20 * time.Millisecond):
 	}
-	_ = q.Enqueue(context.Background(), domain.WorkItem{ID: "x", ScanID: "s"})
+	enq(t, q, context.Background(), "x", "s")
 	select {
 	case it := <-done:
 		if it.ID != "x" {
@@ -89,9 +110,9 @@ func testCtxCancel(t *testing.T, q platform.WorkQueue) {
 // eagerly; Valkey marks-and-skips — same observable outcome.)
 func testDrain(t *testing.T, q platform.WorkQueue) {
 	ctx := context.Background()
-	_ = q.Enqueue(ctx, domain.WorkItem{ID: "s1a", ScanID: "s1"})
-	_ = q.Enqueue(ctx, domain.WorkItem{ID: "s2a", ScanID: "s2"})
-	_ = q.Enqueue(ctx, domain.WorkItem{ID: "s1b", ScanID: "s1"})
+	enq(t, q, ctx, "s1a", "s1")
+	enq(t, q, ctx, "s2a", "s2")
+	enq(t, q, ctx, "s1b", "s1")
 
 	if err := q.Drain(ctx, "s1"); err != nil {
 		t.Fatal(err)
@@ -101,7 +122,7 @@ func testDrain(t *testing.T, q platform.WorkQueue) {
 		t.Fatalf("dequeue after drain = %q,%v want s2a", got.ID, err)
 	}
 	// A drained scan's items are never dequeued (whether dropped or skipped).
-	_ = q.Enqueue(ctx, domain.WorkItem{ID: "s1c", ScanID: "s1"})
+	enq(t, q, ctx, "s1c", "s1")
 	dctx, cancel := context.WithTimeout(ctx, 60*time.Millisecond)
 	defer cancel()
 	if _, err := q.Dequeue(dctx); !errors.Is(err, context.DeadlineExceeded) {
@@ -122,7 +143,10 @@ func testEnqDeqMultiset(t *testing.T, q platform.WorkQueue) {
 	for i := 0; i < n; i++ {
 		id := domain.WorkItemID(fmt.Sprintf("wi-%d", i))
 		want[i] = id
-		if err := q.Enqueue(ctx, domain.WorkItem{ID: id, ScanID: "s"}); err != nil {
+		if err := q.Enqueue(ctx, domain.WorkItem{
+			ID: id, ScanID: "s", Scope: domain.URLScoped,
+			Target: domain.Target{URL: "https://x.test/" + string(id), Host: "x.test", Scheme: "https"},
+		}); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 	}

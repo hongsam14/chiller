@@ -194,12 +194,33 @@ func (v *Valkey) Enqueue(ctx context.Context, item domain.WorkItem) error {
 	return nil
 }
 
+// Dequeue hands a worker the next item, skipping any whose scan has been drained.
+//
+// The reader already drops drained items on its way into the channel, but that is
+// not enough: it reads AHEAD, so an item can be sitting in the channel before its
+// scan is drained and would then be handed out anyway. StopScan drains and expects
+// the queue to stop dispatching, and the in-memory queue checks at exactly this
+// point — so the durable one has to as well, or "stopped" means something different
+// depending on which backend is wired.
+//
+// The item is already XACKed by the reader, so skipping it here simply drops it.
 func (v *Valkey) Dequeue(ctx context.Context) (domain.WorkItem, error) {
-	select {
-	case it := <-v.ch:
-		return it, nil
-	case <-ctx.Done():
-		return domain.WorkItem{}, ctx.Err()
+	for {
+		select {
+		case it := <-v.ch:
+			drained, err := v.rdb.SIsMember(ctx, v.drainedKey, string(it.ScanID)).Result()
+			if err != nil {
+				// The queue cannot confirm the scan is still live. Dispatching would
+				// risk running work for a stopped scan, so surface the failure instead.
+				return domain.WorkItem{}, fmt.Errorf("workqueue: drained check on dequeue: %w", err)
+			}
+			if drained {
+				continue // the scan was stopped after this item was read ahead
+			}
+			return it, nil
+		case <-ctx.Done():
+			return domain.WorkItem{}, ctx.Err()
+		}
 	}
 }
 

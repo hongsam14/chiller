@@ -9,8 +9,11 @@ package taskstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/enki-offen/chiller/internal/crypto"
 
 	"github.com/enki-offen/chiller/internal/domain"
 	"github.com/enki-offen/chiller/internal/findings/report"
@@ -27,6 +30,7 @@ type Mongo struct {
 	scans   *mongo.Collection
 	ledger  *mongo.Collection
 	reports *mongo.Collection
+	kr      crypto.Keyring
 }
 
 var _ platform.TaskStore = (*Mongo)(nil)
@@ -37,10 +41,42 @@ type reportDoc struct {
 	Report report.Report `bson:"report"`
 }
 
+// The ledger's stored shape differs from the in-memory one in exactly one way:
+// a finding's evidence is an encrypted envelope rather than plaintext snippets.
+// That forces a local document type — platform.WorkLedgerEntry embeds a
+// domain.WorkItemOutcome, which carries evidence in the clear.
+type ledgerDoc struct {
+	ID          domain.WorkItemID  `bson:"_id"`
+	ScanID      domain.ScanID      `bson:"scanId"`
+	Item        domain.WorkItem    `bson:"item"`
+	State       platform.ItemState `bson:"state"`
+	Outcome     *sealedOutcome     `bson:"outcome"`
+	LeaseOwner  string             `bson:"leaseOwner"`
+	LeaseExpiry domain.Timestamp   `bson:"leaseExpiry"`
+}
+
+type sealedOutcome struct {
+	ID            domain.WorkItemID                 `bson:"id"`
+	Findings      []sealedFinding                   `bson:"findings"`
+	Failed        []domain.CheckerID                `bson:"failed"`
+	NotApplicable map[domain.CheckerID][]domain.CWE `bson:"notApplicable"`
+}
+
+type sealedFinding struct {
+	CWEs       []domain.CWE    `bson:"cwes"`
+	TargetURL  string          `bson:"targetUrl"`
+	SourceTool string          `bson:"sourceTool"`
+	Severity   domain.Severity `bson:"severity"`
+	Evidence   crypto.Envelope `bson:"evidence"`
+}
+
 // NewMongo connects to Mongo (TLS enforced via the URI, SECURITY-01) with
 // majority write-concern, verifies connectivity (fail-closed, SECURITY-15), and
 // ensures the required indexes. dbName defaults to "chiller".
-func NewMongo(ctx context.Context, uri, dbName string) (*Mongo, error) {
+func NewMongo(ctx context.Context, uri, dbName string, kr crypto.Keyring) (*Mongo, error) {
+	if kr == nil {
+		return nil, errors.New("taskstore: mongo needs a keyring (the ledger carries finding evidence)")
+	}
 	if dbName == "" {
 		dbName = "chiller"
 	}
@@ -56,6 +92,7 @@ func NewMongo(ctx context.Context, uri, dbName string) (*Mongo, error) {
 	db := client.Database(dbName)
 	m := &Mongo{
 		client:  client,
+		kr:      kr,
 		scans:   db.Collection("scans"),
 		ledger:  db.Collection("workledger"),
 		reports: db.Collection("reports"),
@@ -292,10 +329,20 @@ func (m *Mongo) ListExpiredInflight(ctx context.Context, id domain.ScanID, now d
 }
 
 // RecordOutcome finalizes only if still inflight and owned by `owner` (BR-L5).
+//
+// The outcome carries the item's findings, evidence and all — the ledger is how a
+// worker's results reach the manager. That makes this collection a durable home
+// for response fragments, so the evidence is sealed on the way in (data-census
+// D1/O-4); without this, encrypting the findings collection alone would leave the
+// same plaintext sitting in the ledger next to it.
 func (m *Mongo) RecordOutcome(ctx context.Context, wid domain.WorkItemID, owner string, o domain.WorkItemOutcome) (bool, error) {
+	sealed, err := m.sealOutcome(o)
+	if err != nil {
+		return false, err
+	}
 	res := m.ledger.FindOneAndUpdate(ctx,
 		bson.M{"_id": wid, "state": platform.ItemInflight.String(), "leaseOwner": owner},
-		bson.M{"$set": bson.M{"state": platform.ItemDone.String(), "outcome": o, "leaseOwner": "", "leaseExpiry": 0}},
+		bson.M{"$set": bson.M{"state": platform.ItemDone.String(), "outcome": sealed, "leaseOwner": "", "leaseExpiry": 0}},
 	)
 	if errors.Is(res.Err(), mongo.ErrNoDocuments) {
 		// reclaimed/stolen (reject) vs genuinely-absent (error) — match mem.
@@ -333,7 +380,7 @@ func (m *Mongo) findItems(ctx context.Context, filter bson.M, who string) ([]dom
 	defer func() { _ = cur.Close(ctx) }()
 	var out []domain.WorkItem
 	for cur.Next(ctx) {
-		var e platform.WorkLedgerEntry
+		var e ledgerDoc
 		if err := cur.Decode(&e); err != nil {
 			return nil, fmt.Errorf("taskstore: %s decode: %w", who, err)
 		}
@@ -350,19 +397,123 @@ func (m *Mongo) AllOutcomes(ctx context.Context, id domain.ScanID) ([]domain.Wor
 	defer func() { _ = cur.Close(ctx) }()
 	var out []domain.WorkItemOutcome
 	for cur.Next(ctx) {
-		var e platform.WorkLedgerEntry
+		var e ledgerDoc
 		if err := cur.Decode(&e); err != nil {
 			return nil, fmt.Errorf("taskstore: AllOutcomes decode: %w", err)
 		}
-		if e.Outcome != nil {
-			out = append(out, *e.Outcome)
+		if e.Outcome == nil {
+			continue
 		}
+		o, err := m.openOutcome(*e.Outcome)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, o)
 	}
 	return out, cur.Err()
 }
 
+// PurgeOutcomeEvidence drops the evidence the ledger is still carrying for a scan
+// (G1'=E). Once the findings have been written to their own collection, the
+// ledger's copy is dead weight: nothing reads it again, and resume only ever
+// replays items that never finished. Removing it collapses the number of places a
+// scan's evidence exists from two down to one (data-census rule O-2 — a transport
+// copy dies when the transport is done).
+//
+// It leaves the rest of the outcome (the item id, which checkers failed, which
+// were not applicable) in place: that is what the ledger is actually for, and it
+// is not sensitive.
+//
+// The caller must only invoke this AFTER the findings are durably stored.
+func (m *Mongo) PurgeOutcomeEvidence(ctx context.Context, id domain.ScanID) error {
+	_, err := m.ledger.UpdateMany(ctx,
+		bson.M{"scanId": id, "outcome": bson.M{"$ne": nil}},
+		bson.M{"$unset": bson.M{"outcome.findings.$[].evidence": ""}},
+	)
+	if err != nil {
+		return fmt.Errorf("taskstore: PurgeOutcomeEvidence %q: %w", id, err)
+	}
+	return nil
+}
+
+// sealOutcome encrypts the evidence of every finding an outcome carries, binding
+// each envelope to the work item and the finding it belongs to so a sealed value
+// cannot be transplanted onto another.
+func (m *Mongo) sealOutcome(o domain.WorkItemOutcome) (sealedOutcome, error) {
+	out := sealedOutcome{
+		ID:            o.ID,
+		Failed:        o.Failed,
+		NotApplicable: o.NotApplicable,
+		Findings:      make([]sealedFinding, 0, len(o.Findings)),
+	}
+	for _, f := range o.Findings {
+		sf := sealedFinding{
+			CWEs:       f.CWEs,
+			TargetURL:  f.TargetURL,
+			SourceTool: f.SourceTool,
+			Severity:   f.Severity,
+		}
+		if len(f.Evidence.Snippets) > 0 {
+			pt, err := json.Marshal(f.Evidence.Snippets)
+			if err != nil {
+				return sealedOutcome{}, fmt.Errorf("taskstore: marshal evidence: %w", err)
+			}
+			env, err := crypto.Seal(m.kr, pt, crypto.LedgerEvidenceAAD(string(o.ID), string(f.Key())))
+			if err != nil {
+				return sealedOutcome{}, fmt.Errorf("taskstore: seal evidence: %w", err)
+			}
+			sf.Evidence = env
+		}
+		out.Findings = append(out.Findings, sf)
+	}
+	return out, nil
+}
+
+func (m *Mongo) openOutcome(s sealedOutcome) (domain.WorkItemOutcome, error) {
+	o := domain.WorkItemOutcome{
+		ID:            s.ID,
+		Failed:        s.Failed,
+		NotApplicable: s.NotApplicable,
+		Findings:      make([]domain.Finding, 0, len(s.Findings)),
+	}
+	for _, sf := range s.Findings {
+		f := domain.Finding{
+			CWEs:       sf.CWEs,
+			TargetURL:  sf.TargetURL,
+			SourceTool: sf.SourceTool,
+			Severity:   sf.Severity,
+		}
+		// An empty envelope means either "this finding had no evidence" or "the
+		// evidence was purged after the scan finalized". Both are legitimate, and
+		// neither is a decryption failure.
+		if !sf.Evidence.Empty() {
+			pt, err := crypto.Open(m.kr, sf.Evidence, crypto.LedgerEvidenceAAD(string(s.ID), string(f.Key())))
+			if err != nil {
+				return domain.WorkItemOutcome{}, fmt.Errorf("taskstore: open evidence on item %q: %w", s.ID, err)
+			}
+			if err := json.Unmarshal(pt, &f.Evidence.Snippets); err != nil {
+				return domain.WorkItemOutcome{}, fmt.Errorf("taskstore: unmarshal evidence on item %q: %w", s.ID, err)
+			}
+		}
+		o.Findings = append(o.Findings, f)
+	}
+	return o, nil
+}
+
+// SaveReport stores the report's SKELETON — coverage, framework labels, mapping
+// revision — and deliberately not its findings, which belong to the FindingsStore
+// (data-census O-1). Embedding them here would give every finding a second durable
+// home, with its own copy of the evidence to encrypt and expire, and would put the
+// whole report back under the 16MB document ceiling that motivated splitting them
+// out in the first place.
+//
+// This is a storage decision, not a wire one: the report served over the API still
+// carries its findings. The two are joined on read, in exactly one place
+// (Orchestrator.GetReport).
 func (m *Mongo) SaveReport(ctx context.Context, id domain.ScanID, r report.Report) error {
-	_, err := m.reports.ReplaceOne(ctx, bson.M{"_id": id}, reportDoc{ID: id, Report: r}, options.Replace().SetUpsert(true))
+	skeleton := r
+	skeleton.Findings = nil
+	_, err := m.reports.ReplaceOne(ctx, bson.M{"_id": id}, reportDoc{ID: id, Report: skeleton}, options.Replace().SetUpsert(true))
 	if err != nil {
 		return fmt.Errorf("taskstore: SaveReport %q: %w", id, err)
 	}

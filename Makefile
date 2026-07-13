@@ -11,8 +11,14 @@ test:
 # Durable-backend contract suites against real Mongo/Valkey containers
 # (Q10=A). Requires Docker; excluded from the default `test` target by the
 # `integration` build tag.
+#
+# ./... , not ./internal/platform/... : the durable FindingsStore and ResponseCache
+# live in the findings and scan units, and a platform-only target would have run
+# green while never touching them.
+#
+# Containers are started per suite by testcontainers, so this is slow (minutes).
 test-integration:
-	go test -tags integration ./internal/platform/...
+	go test -tags integration -timeout 30m ./...
 
 lint:
 	golangci-lint run

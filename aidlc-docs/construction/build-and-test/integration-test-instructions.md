@@ -94,3 +94,39 @@ Automatic (`testcontainers.TerminateContainer` in `t.Cleanup`).
 
 ## ⚠️ Current status
 **Compiles clean (`go vet -tags integration` OK) but has NOT been executed** — the authoring environment had no Docker daemon available to the test run. **This suite must be executed in a Docker-capable CI job before the durable backends are trusted in production.**
+
+---
+
+## r3 추가 시나리오 (persistence 증분) — Docker 필요, `-tags integration`
+
+> **실행**: `make test-integration` (testcontainers가 Mongo/Valkey 컨테이너를 코드에서 직접 띄운다 — 사전 `docker-compose up` 불요)
+> **⚠️ 현재 상태**: 아래 4개 스위트는 **컴파일·vet만 검증됐고 실행된 적이 없다** (작성 환경에 Docker 없음). `production-readiness.md` blocking #1.
+
+### Scenario 6: FindingsStore 계약 (Mongo) — mem과 동일 스위트
+- **파일**: `internal/findings/store/store_mongo_test.go` (`TestMongo_FindingsStoreContract`)
+- **검증**: 라운드트립 · **순서 보존**(Mongo는 정렬 없이 문서 순서를 보장하지 않으므로 `idx` 정렬이 실제로 동작하는지) ·
+  멱등 재저장 · **꼬리 삭제**(이전 실행이 더 많은 finding을 남겼을 때 유령 제거) · **evidence 삭제 금지** · 스캔 격리
+- **왜 중요한가**: 순서가 어긋나면 `FrameworkLabels`가 엉뚱한 finding을 가리킨다(조용한 컴플라이언스 오염)
+
+### Scenario 7: at-rest 암호화 — **raw 바이트로 단언**
+- **파일**: `store_mongo_test.go` (`TestMongo_EvidenceIsEncryptedAtRest`) · `taskstore_mongo_test.go`
+  (`TestMongo_LedgerEvidenceIsEncryptedAtRest`) · `cache_valkey_test.go` (`TestValkey_CachedResponseIsEncryptedAtRest`)
+- **검증**: seam을 통과하면 평문이 나오지만, **Mongo의 raw BSON / Valkey의 raw 값에는 평문이 없다**
+  (evidence snippet · 응답 본문 · **대상 사이트 세션 쿠키**). 동시에 인덱스 대상 필드(targetUrl)는 **평문으로 남아** 있어야 한다
+- **왜 이렇게 테스트하는가**: 라운드트립 테스트는 암호화 여부를 **증명하지 못한다** — 평문 저장도 통과한다
+
+### Scenario 8: TTL 인덱스 정합 (`--findings-ttl`)
+- **파일**: `store_mongo_test.go` (`TestMongo_TTLIndexOnlyWhenAsked`)
+- **검증**: 기본값(0)에서는 TTL 인덱스가 **생성되지 않는다**(Q7=C 무기한 보존) · `>0`이면 생성된다 ·
+  값을 바꿔 재기동하면 `IndexOptionsConflict` 없이 **drop 후 재생성**된다 · 0으로 되돌리면 인덱스가 **제거**된다
+
+### Scenario 9: ResponseCache 계약 + wipe (Valkey)
+- **파일**: `internal/scan/fetch/cache_valkey_test.go`
+- **검증**: 계약 스위트 전체 · **모든 키에 TTL이 걸려 있다**(프로세스가 죽어 wipe를 못 해도 만료로 사라짐) ·
+  **`WipeScan` 후 `chiller:cache:{scanId}:*` 키가 0개** · 인덱스 SET이 evict돼도 SCAN 폴백으로 지운다
+- **cleanup**: testcontainers가 자동 종료 (`t.Cleanup`)
+
+### Scenario 10 (권장, 미구현): 캐시 백엔드 다운 시 fail-open
+- **검증**: Valkey-cache 컨테이너를 스캔 도중 정지 → 스캔이 **완주**하고(느려질 뿐), `cacheErrors` 카운터가 증가하며,
+  재fetch가 **per-host rate budget을 여전히 소비**한다 (RESILIENCY-14 카오스)
+- **현재**: 유닛 레벨(`TestFetcher_CacheFailsOpen`)로만 검증됨. 컨테이너 정지 시나리오는 CI에서 추가할 것

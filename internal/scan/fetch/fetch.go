@@ -44,6 +44,7 @@ type fetcher struct {
 	timeout  time.Duration
 	proxyURL string
 	retries  int
+	stats    *CacheStats
 }
 
 // Option configures a Fetcher at construction (backward-compatible variadic;
@@ -55,6 +56,12 @@ type Option func(*fetcher)
 // authenticated auth-proxy (PR-12/PR-12c). An empty proxyURL is a no-op.
 func WithProxy(proxyURL string) Option {
 	return func(f *fetcher) { f.proxyURL = proxyURL }
+}
+
+// WithCacheStats gives the Fetcher somewhere to record cache hits, misses and
+// backend errors. Without it the Fetcher still works; it just reports nothing.
+func WithCacheStats(s *CacheStats) Option {
+	return func(f *fetcher) { f.stats = s }
 }
 
 // WithRetries sets the number of transient-error retries (conn reset / 5xx /
@@ -147,8 +154,21 @@ func (f *fetcher) checkRetry(ctx context.Context, resp *http.Response, err error
 
 func (f *fetcher) Fetch(ctx context.Context, scanID domain.ScanID, t domain.Target) (*domain.HAREntry, error) {
 	// Reuse: never re-fetch a URL already cached this scan (FR-02).
-	if e, ok := f.cache.Get(scanID, t.URL); ok {
+	//
+	// The cache fails open. If the backend is unreachable we treat it as a miss and
+	// fetch again: the cache is an optimization, and a scan that runs slowly beats a
+	// scan that does not run. What that costs is extra traffic to the target — which
+	// is bounded anyway, because a refetch goes through the same approval gate and
+	// the same per-host rate budget below as a first fetch. The error is counted, so
+	// a cache that is failing every call cannot masquerade as one that is merely cold.
+	switch e, hit, err := f.cache.Get(ctx, scanID, t.URL); {
+	case err != nil:
+		f.stats.err()
+	case hit:
+		f.stats.hit()
 		return e, nil
+	default:
+		f.stats.miss()
 	}
 	if err := f.gate.Authorize(t); err != nil { // fail-closed BEFORE any outbound (SR-3)
 		return nil, err
@@ -180,7 +200,19 @@ func (f *fetcher) Fetch(ctx context.Context, scanID domain.ScanID, t domain.Targ
 		return nil, fmt.Errorf("fetch %s read: %w", t.URL, err)
 	}
 	e := toHAR(t, resp, body)
-	_ = f.cache.Put(scanID, t.URL, e)
+	// Do not cache a response for a scan that is already over. StopScan cancels the
+	// scan context and then wipes the cache, but a fetch already past its ctx checks
+	// keeps running to completion — and a Put here would land AFTER the wipe,
+	// re-creating exactly the response body the wipe exists to remove and leaving it
+	// there until the TTL catches it (FR-12).
+	if ctx.Err() != nil {
+		return e, nil
+	}
+	// A cache write that fails costs us reuse, not correctness — the response is
+	// already in hand. Count it and move on.
+	if err := f.cache.Put(ctx, scanID, t.URL, e); err != nil {
+		f.stats.err()
+	}
 	return e, nil
 }
 
