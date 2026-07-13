@@ -208,15 +208,9 @@ func (v *Valkey) Dequeue(ctx context.Context) (domain.WorkItem, error) {
 	for {
 		select {
 		case it := <-v.ch:
-			drained, err := v.rdb.SIsMember(ctx, v.drainedKey, string(it.ScanID)).Result()
-			if err != nil {
-				// The queue cannot confirm the scan is still live. Dispatching would
-				// risk running work for a stopped scan, so surface the failure instead.
-				return domain.WorkItem{}, fmt.Errorf("workqueue: drained check on dequeue: %w", err)
-			}
-			if drained {
-				continue // the scan was stopped after this item was read ahead
-			}
+			// DELIBERATE REGRESSION (adversarial test of the CI pipeline):
+			// the read-ahead recheck is removed, reintroducing the Drain bug that
+			// made StopScan not actually stop a scan. This branch must go RED.
 			return it, nil
 		case <-ctx.Done():
 			return domain.WorkItem{}, ctx.Err()
