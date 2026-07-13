@@ -8,15 +8,30 @@ import (
 	"github.com/enki-offen/chiller/internal/findings/compliance"
 )
 
+// ReportSchemaVersion marks the report's wire layout. It changed when
+// FrameworkLabels stopped being positional (see below), so a consumer can tell
+// the two apart instead of silently misreading one as the other.
+const ReportSchemaVersion = 2
+
 // Report is the merged output served by the platform ScanAPI.
+//
+// Findings are NOT stored with the rest of this struct: the durable TaskStore
+// writes the report's skeleton and the FindingsStore owns the findings, and the
+// two are joined on read (data-census O-1 — evidence lives in one place). That is
+// also why FrameworkLabels references findings by FindingKey rather than by index
+// into the Findings slice, which is what it used to do: an index is only meaningful
+// if the findings come back in the order they were written, and pinning a report's
+// correctness to a store's iteration order is a bug waiting for a backend swap.
 type Report struct {
 	ScanID          domain.ScanID
 	Findings        []domain.Finding // CWE axis (issues)
 	Coverage        domain.Coverage  // PS-ID axis (accounting)
 	MappingRevision string
 	// FrameworkLabels projects findings onto a framework for the report — labels
-	// only. framework → item → indices into Findings.
-	FrameworkLabels map[domain.Framework]map[string][]int
+	// only. framework → item → the keys of the findings that carry it. Resolve a
+	// key against Findings with domain.Finding.Key().
+	FrameworkLabels map[domain.Framework]map[string][]domain.FindingKey
+	SchemaVersion   int
 }
 
 // Builder is the ReportBuilder seam (NFR-01).
@@ -30,12 +45,12 @@ type builder struct{ mapper compliance.Mapper }
 func New(mapper compliance.Mapper) Builder { return &builder{mapper: mapper} }
 
 func (b *builder) Build(scanID domain.ScanID, findings []domain.Finding, cov domain.Coverage, frameworks []domain.Framework) Report {
-	labels := make(map[domain.Framework]map[string][]int, len(frameworks))
+	labels := make(map[domain.Framework]map[string][]domain.FindingKey, len(frameworks))
 	for _, fw := range frameworks {
-		byItem := map[string][]int{}
-		for i, f := range findings {
+		byItem := map[string][]domain.FindingKey{}
+		for _, f := range findings {
 			for _, item := range b.mapper.Project(f.CWEs, fw) {
-				byItem[item] = append(byItem[item], i)
+				byItem[item] = append(byItem[item], f.Key())
 			}
 		}
 		labels[fw] = byItem
@@ -46,5 +61,6 @@ func (b *builder) Build(scanID domain.ScanID, findings []domain.Finding, cov dom
 		Coverage:        cov,
 		MappingRevision: b.mapper.Revision(),
 		FrameworkLabels: labels,
+		SchemaVersion:   ReportSchemaVersion,
 	}
 }

@@ -27,7 +27,7 @@ func TestServeUI_HeadersAndBody(t *testing.T) {
 	defer srv.Close()
 
 	resp := do(t, http.MethodGet, srv.URL+"/ui", "", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("/ui status = %d, want 200", resp.StatusCode)
 	}
@@ -51,14 +51,14 @@ func TestIntrospectQueue_AuthzAndStats(t *testing.T) {
 
 	// fail-closed: no token → 401 (SECURITY-08)
 	resp := do(t, http.MethodGet, srv.URL+"/api/introspect/queue", "", "")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("no-token introspect = %d, want 401", resp.StatusCode)
 	}
 
 	// authorized → stats
 	resp = do(t, http.MethodGet, srv.URL+"/api/introspect/queue", "secret", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("introspect = %d, want 200", resp.StatusCode)
 	}
@@ -76,7 +76,7 @@ func TestIntrospectQueue_NoInspector_Degrades(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	resp := do(t, http.MethodGet, srv.URL+"/api/introspect/queue", "secret", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var got map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&got)
 	if got["available"] != false {
@@ -92,7 +92,7 @@ func TestHealthz_DeepCheck_FailClosed(t *testing.T) {
 	defer srv.Close()
 
 	resp := do(t, http.MethodGet, srv.URL+"/healthz", "", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("healthz with a failing backend = %d, want 503", resp.StatusCode)
 	}
@@ -126,12 +126,12 @@ func TestIntrospectScans_ListsRunning(t *testing.T) {
 
 	// authz fail-closed
 	resp := do(t, http.MethodGet, srv.URL+"/api/introspect/scans", "", "")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("no-token scans = %d, want 401", resp.StatusCode)
 	}
 	resp = do(t, http.MethodGet, srv.URL+"/api/introspect/scans", "secret", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var got map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&got)
 	scans, _ := got["scans"].([]any)
@@ -145,7 +145,7 @@ func TestHealthz_NoChecks_OK(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	resp := do(t, http.MethodGet, srv.URL+"/healthz", "", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("healthz with no checks = %d, want 200", resp.StatusCode)
 	}

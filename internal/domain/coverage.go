@@ -7,19 +7,57 @@ import "fmt"
 type ItemStatus int
 
 const (
-	StatusChecked       ItemStatus = iota // chiller ran and judged the item (regardless of whether an issue was found)
-	StatusNotApplicable                   // item does not apply to this target
-	StatusDelegated                       // covered by another stage (carries Target, R6)
-	StatusToolFailed                      // the owning checker errored before judging (US-027)
+	// StatusUnset is the zero value and is NEVER valid. It exists so that the
+	// zero value cannot be mistaken for a real status.
+	//
+	// This matters more than it looks. A BSON decoder does not invoke a custom
+	// unmarshaler for a field that is absent from the document — it simply leaves
+	// the Go zero value in place. If StatusChecked were the zero value (it used to
+	// be), a coverage record whose status field went missing would silently read
+	// as "chiller checked this item and judged it": a storage fault would turn
+	// into a compliance FALSE NEGATIVE, which is the single worst way this system
+	// can be wrong. With StatusUnset at zero, that same document fails
+	// Coverage.Validate (R5) instead.
+	StatusUnset         ItemStatus = iota
+	StatusChecked                  // chiller ran and judged the item (regardless of whether an issue was found)
+	StatusNotApplicable            // item does not apply to this target
+	StatusDelegated                // covered by another stage (carries Target, R6)
+	StatusToolFailed               // the owning checker errored before judging (US-027)
 )
 
 func (s ItemStatus) valid() bool { return s >= StatusChecked && s <= StatusToolFailed }
 
+// itemStatusNames are the persisted and wire forms (G2) — index 0 (StatusUnset)
+// deliberately has no name, so it can neither be written nor parsed.
+var itemStatusNames = [...]string{"", "checked", "not_applicable", "delegated", "tool_failed"}
+
+// String returns the canonical name, or "unknown" for the unset/out-of-range values.
+func (s ItemStatus) String() string {
+	if !s.valid() {
+		return "unknown"
+	}
+	return itemStatusNames[s]
+}
+
+// ParseItemStatus is the inverse of String. An unknown or empty name is rejected,
+// never defaulted (see StatusUnset).
+func ParseItemStatus(name string) (ItemStatus, bool) {
+	if name == "" {
+		return StatusUnset, false
+	}
+	for i, n := range itemStatusNames {
+		if n == name {
+			return ItemStatus(i), true
+		}
+	}
+	return StatusUnset, false
+}
+
 // ItemRecord is the coverage record for one PS-ID.
 type ItemRecord struct {
-	Status ItemStatus
+	Status ItemStatus `bson:"status" json:"status"`
 	// Target is set iff Status == StatusDelegated (R6); empty otherwise.
-	Target DelegateTarget
+	Target DelegateTarget `bson:"target,omitempty" json:"target,omitempty"`
 }
 
 // Coverage is the accounting axis: the compliance items mapped to their record.

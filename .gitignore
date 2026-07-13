@@ -1,4 +1,7 @@
-aidlc-docs/**/*.local.md
+# AI-DLC workflow artifacts stay local — they are how the code got written, not
+# part of the product. CLAUDE.md stays tracked: it is the workflow contract itself.
+aidlc-docs/
+.aidlc-rule-details/
 
 # Binaries
 /bin/
@@ -16,7 +19,13 @@ vendor/
 go.work
 go.work.sum
 
+# Secrets — real credentials never enter the repo (SECURITY-12).
+# deploy/compose/.env.example is the committed template and holds no key material.
+deploy/compose/.env
+sbom.cyclonedx.json
+
 # Editor / OS
 .idea/
 .vscode/
 .DS_Store
+.claude/

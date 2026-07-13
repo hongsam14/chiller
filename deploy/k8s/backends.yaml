@@ -63,3 +63,51 @@ metadata:
 spec:
   selector: { app: chiller, role: valkey-queue }
   ports: [{ port: 6379 }]
+---
+# Valkey CACHE: volatile (LRU eviction, no AOF). A SEPARATE instance from the
+# queue, deliberately. The two want opposite policies — the queue must never evict
+# (a dropped work item is a lost item) while the cache must be free to evict under
+# memory pressure (a dropped entry just costs a refetch) — so one instance cannot
+# serve both without one of the two policies being wrong.
+#
+# It holds whole response bodies, headers and target session cookies. They are
+# encrypted at rest by chiller (CHILLER_EVIDENCE_KEY), carry a TTL, and are wiped
+# when a scan ends. Losing this instance entirely is survivable: the fetcher treats
+# a cache error as a miss and refetches (fail-open).
+#
+# EVERY worker must point at THIS ONE Service. Workers pointing at different cache
+# instances still produce correct results, but nothing is ever reused across them —
+# the scan target gets fetched once per worker instead of once (FR-02), and nothing
+# in the output says so. Watch cacheHits on /api/introspect/persistence.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chiller-valkey-cache
+  labels: { app: chiller, role: valkey-cache }
+spec:
+  replicas: 1 # no replication: the cache is reconstructible by refetching
+  selector: { matchLabels: { app: chiller, role: valkey-cache } }
+  template:
+    metadata:
+      labels: { app: chiller, role: valkey-cache }
+    spec:
+      containers:
+        - name: valkey
+          image: valkey/valkey:8 # SECURITY-10: pin @sha256; require auth (SECURITY-09)
+          args:
+            - "valkey-server"
+            - "--maxmemory"
+            - "1gb"
+            - "--maxmemory-policy"
+            - "allkeys-lru"
+            # No --appendonly: the cache is volatile by design. Persisting it would
+            # write response bodies to disk for no benefit.
+          ports: [{ containerPort: 6379 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chiller-valkey-cache
+spec:
+  selector: { app: chiller, role: valkey-cache }
+  ports: [{ port: 6379 }]

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/enki-offen/chiller/internal/domain"
 	"github.com/enki-offen/chiller/internal/platform"
@@ -43,7 +44,19 @@ func NewHandler(session platform.BrowserSession, lim safety.RateLimiter) http.Ha
 var _ platform.AuthProxy = (*authProxy)(nil)
 
 func (p *authProxy) Serve(ctx context.Context, addr string) error {
-	p.server = &http.Server{Addr: addr, Handler: http.HandlerFunc(p.handle)}
+	// ReadHeaderTimeout bounds how long a client may take to send its request
+	// headers — without it, a client that dribbles headers holds a connection
+	// open indefinitely (Slowloris).
+	//
+	// Deliberately no WriteTimeout: this is a forward proxy, and its whole job is
+	// relaying arbitrary upstream responses — including the large JS bundles the
+	// PS-009 signature checks need to read. A write deadline would truncate them
+	// intermittently, under load.
+	p.server = &http.Server{
+		Addr:              addr,
+		Handler:           http.HandlerFunc(p.handle),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
 		<-ctx.Done()
 		_ = p.server.Close() // unblock Serve when the scan/process shuts down
@@ -83,7 +96,7 @@ func (p *authProxy) handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "proxy: upstream", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // response body: a failed close cannot lose data
 	copyHeaders(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)

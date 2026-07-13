@@ -203,3 +203,17 @@ const dashboardHTML = `<!doctype html>
 </script>
 </body>
 </html>`
+
+// introspectPersistence reports the persistence counters (Q12=A). The OTel
+// exporter of the next increment reads the same numbers from the same place.
+func (h *Handler) introspectPersistence(w http.ResponseWriter, r *http.Request) {
+	if h.persist == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false})
+		return
+	}
+	snap := h.persist.PersistenceSnapshot()
+	writeJSON(w, http.StatusOK, struct {
+		Available bool `json:"available"`
+		PersistenceSnapshot
+	}{Available: true, PersistenceSnapshot: snap})
+}

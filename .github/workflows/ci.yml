@@ -1,0 +1,142 @@
+# chiller CI.
+#
+# This pipeline exists for one reason: the durable WorkQueue shipped BROKEN in two
+# consecutive increments while Build&Test was green both times. The Valkey `Drain`
+# bug — which made StopScan not actually stop a scan — was found only when someone
+# ran the container-backed suite by hand, after the fact. A pipeline that compiles
+# and runs unit tests would still be green with that bug in it today.
+#
+# So the load-bearing gate here is `integration` (CI-FR-03): real Mongo, real
+# Valkey, on every pull request. Everything else supports it.
+#
+# Supply chain (SECURITY-10/13): every Action is pinned by commit SHA, every tool by
+# an exact version (see Makefile), every image by digest. No floating tags anywhere.
+# The pipeline holds ZERO secrets — it builds an image but never pushes one, and
+# deploys nothing. A compromised workflow here has nothing to steal.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast feedback. Deliberately NOT downstream of `integration` (CI-NFR-03): a
+  # compile error must surface in minutes, not after the container suite finishes.
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          # Reads the version from go.mod, so CI and go.mod cannot drift apart.
+          go-version-file: go.mod
+          # Cache on PRs for speed; NO cache on the push to main, so what lands on
+          # the default branch is always built from nothing (CI-NFR-04). A stale or
+          # poisoned cache can never become the artifact of record.
+          cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: build
+        run: make build
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # NFR-02: the data plane must not import the control plane. Enforced twice —
+      # here without golangci-lint, and again by depguard inside `make lint` — so
+      # the rule survives either tool going missing.
+      - name: arch-check
+        run: make arch-check
+
+      - name: lint
+        run: make lint
+
+      - name: gosec
+        run: make gosec
+
+      - name: unit tests (-race)
+        run: make test
+
+      # Reported, not blocking (C1=D). A stdlib CVE published this morning is not
+      # actionable by whoever is fixing a typo; blocking on it trains people to
+      # ignore red.
+      - name: govulncheck (report only)
+        continue-on-error: true
+        run: make vuln
+
+      - name: coverage (report only)
+        continue-on-error: true
+        run: make cover
+
+  # THE reason this pipeline exists. Real Mongo + real Valkey via testcontainers.
+  integration:
+    runs-on: ubuntu-latest
+    # Backstop only. `go test -timeout 10m` (see Makefile) fires first and panics
+    # with a full goroutine dump, so a hang tells us WHERE, not just THAT.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: integration tests (real Mongo + Valkey)
+        run: make test-integration
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          # fetch-depth: 0 is load-bearing. gitleaks scans HISTORY, not the working
+          # tree. With the default shallow clone it would examine almost nothing and
+          # report green — a gate that inspects nothing but passes, which is exactly
+          # the failure this repo already had with .golangci.yml.
+          fetch-depth: 0
+
+      - name: secret scan (full history)
+        run: make secrets
+
+      # Built, scanned, discarded. Never pushed: no registry, no credentials, no
+      # blast radius. Also proves the Dockerfile still builds — without this the
+      # image could break and CI would stay green.
+      - name: docker build (no push)
+        run: docker build -t chiller:ci .
+
+      - name: trivy image scan (report only)
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            image --severity HIGH,CRITICAL --no-progress chiller:ci
+
+      - name: SBOM
+        continue-on-error: true
+        run: make sbom
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: sbom
+          path: sbom.cyclonedx.json
+          if-no-files-found: warn
