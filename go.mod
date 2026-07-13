@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	github.com/playwright-community/playwright-go v0.5200.1
 	github.com/projectdiscovery/retryablehttp-go v1.3.17
-	github.com/redis/go-redis/v9 v9.20.1
+	github.com/redis/go-redis/v9 v9.21.0
 	github.com/testcontainers/testcontainers-go v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.37.0
