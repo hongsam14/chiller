@@ -4,8 +4,8 @@ import (
 	"net/url"
 	"regexp"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/safety"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/safety"
 )
 
 // Discoverer finds a page's JS asset URLs (SR-5). It runs as step ② of the

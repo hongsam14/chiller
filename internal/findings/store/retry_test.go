@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/enki-offen/chiller/internal/crypto"
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/store"
+	"github.com/hongsam14/chiller/internal/crypto"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/store"
 )
 
 // flaky fails its first failN SaveFindings calls, then succeeds.

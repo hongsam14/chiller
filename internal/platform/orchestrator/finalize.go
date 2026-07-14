@@ -4,9 +4,9 @@ import (
 	"context"
 	"log"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/coverage"
-	"github.com/enki-offen/chiller/internal/platform"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/coverage"
+	"github.com/hongsam14/chiller/internal/platform"
 )
 
 // finalize runs once all WorkItems of a scan are terminal (US-014..021): it

@@ -5,7 +5,7 @@
 // CWEOwnership findings' coverage needs.
 package observation
 
-import "github.com/enki-offen/chiller/internal/domain"
+import "github.com/hongsam14/chiller/internal/domain"
 
 // Signature judges a single CWE over a ScanContext.
 type Signature interface {

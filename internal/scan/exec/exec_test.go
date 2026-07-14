@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/fetch"
-	"github.com/enki-offen/chiller/internal/scan/safety"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/fetch"
+	"github.com/hongsam14/chiller/internal/scan/safety"
 )
 
 // fakeChecker is a controllable domain.Checker.

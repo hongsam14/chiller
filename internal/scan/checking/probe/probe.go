@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 // Adapter is a probe: a domain.Checker plus tool metadata.

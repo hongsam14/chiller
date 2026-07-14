@@ -3,7 +3,7 @@ package observation
 import (
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 func ctxWith(scheme string, status int, body string, targetURL string) domain.ScanContext {

@@ -1,6 +1,6 @@
 package probe
 
-import "github.com/enki-offen/chiller/internal/domain"
+import "github.com/hongsam14/chiller/internal/domain"
 
 // Indicative CWE ownership per probe (authoritative rows pinned at C-5, kept in
 // sync with configs/mappings/kisa.yaml). Distinct CWEs — no two checkers share a

@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/platform"
-	"github.com/enki-offen/chiller/internal/scan/safety"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/platform"
+	"github.com/hongsam14/chiller/internal/scan/safety"
 )
 
 // authProxy is the local forward proxy workers egress through in financial mode

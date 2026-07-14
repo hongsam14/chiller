@@ -4,8 +4,8 @@
 package report
 
 import (
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/compliance"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/compliance"
 )
 
 // ReportSchemaVersion marks the report's wire layout. It changed when

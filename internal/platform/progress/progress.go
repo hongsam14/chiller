@@ -8,8 +8,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/platform"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/platform"
 )
 
 // Mem holds in-memory progress counters per scan.
