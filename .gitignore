@@ -1,7 +1,6 @@
-# AI-DLC workflow artifacts stay local — they are how the code got written, not
-# part of the product. CLAUDE.md stays tracked: it is the workflow contract itself.
-aidlc-docs/
-.aidlc-rule-details/
+# AI-DLC workflow artifacts are tracked in the repo: they record how the code got
+# built (state, audit, design docs) and the workflow rules themselves, so the
+# process is reproducible and reviewable. CLAUDE.md is the workflow contract.
 
 # Binaries
 /bin/
