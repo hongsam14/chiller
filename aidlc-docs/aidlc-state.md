@@ -41,6 +41,23 @@ Q8=B propose IR+COE.
 | resiliency-baseline | Yes | all blocking | Requirements Analysis (Q8=A) |
 | property-based-testing | Yes | FULL (not Partial) | Requirements Analysis (Q9=A) |
 
+## Scope Decision (2026-07-14) — passive core + active-probe coverage + session prerequisite
+`inception/requirements/scope-decision-active-vs-passive.md`. 전수 조사 결과 chiller 자체엔 익스플로잇/퍼징 없음; 능동성은 OSS probe 5개(testssl/dirhunt/changeme/Corsy/subzy)에서만 유입.
+- **D1**: 능동 probe 5개 **유지**(KISA 26커버리지). 미션 "passive" 순수성 완화는 의도적 수용; 신뢰경계(approved∩allowlist·rate·timeout) 안에서만.
+- **D2**: 세션 설계 = "능동 전제"가 아니라 **로그인 뒤 표면 커버리지 전제(능동·수동 공통)**. 능동 5개 중 세션 쓰는 건 dirhunt·Corsy 2개뿐(testssl/changeme/subzy는 세션 무관). 세션이 진짜 살리는 건 인증 수동검사 + JS캡처 API 트래픽(스코프 본체).
+- 스코프 정합 항목 17개(observation 10+humble 5+httpx 2) + 캡처 인프라 전부 IN. 능동 유지하되 익스플로잇/퍼징은 스코프 라인.
+
+## Active Increment (2026-07-14) — Probe CLI 배선 (r7) — ✅ CONSTRUCTION 완료, Operations 도달
+Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP PRIORITY). **결과: 6/7 배선**(humble·httpx·Corsy·testssl·dirhunt·subzy), changeme(PS-019) 잠정 미배선(F5). 실행 시 최대 21/26 판정. **Operations 도달**: production-readiness #0 → DONE(6/7); 잔여 게이트 #0a(Docker probe-integration 1회)·#0b(툴 버전핀/base digest 확정). 모든 단계 승인: Requirements·Workflow Planning·Infra Design·Code Gen(P1+P2)·Build&Test(로컬 green).
+- **Requirements Analysis** — `inception/requirements/requirements-probe.md` **approved 2026-07-14** ("Approve & Continue"). Q1=A(전부 7개)·Q2=B(멀티스테이지 툴 이미지, non-distroless)·Q3=A(생태계 관용 pin)·Q4=C(유닛+통합 exec 검증, 좀비 방지)·Q5=A(JSON+골든)·Q6=A(tool-failed 불변).
+- Implications: SECURITY-09(distroless) **amended** → NFR-P4 하드닝 리스크 수용(문서화). NFR-P1 서브프로세스 프로세스그룹 kill(좀비 방지).
+- **Workflow Planning** — `inception/plans/execution-plan-probe.md` **approved 2026-07-14** ("Approve & Continue"). Risk=Medium. EXECUTE: Infrastructure Design · Code Generation · Build and Test (+ Operations 갱신). SKIP: Reverse Eng · User Stories · App Design · Units Gen · Functional Design · NFR Req/Design (NFR 이미 requirements-probe.md에 완전 열거). 단일 유닛 = scan(probe).
+- **Infrastructure Design** — `construction/scan/infrastructure-design/{probe-infrastructure-design,deployment-architecture,compliance-summary}.md` **approved 2026-07-14** ("Continue to Next Stage"). IQ1=A(python:3.12-slim-bookworm)·IQ2=A(pipx per-tool venv)·IQ3=B(testssl 번들 openssl)·IQ4=A(빌드 이미지 내부 통합테스트)·IQ5=B(디스크 emptyDir 스크래치).
+- **Code Generation Part 1 (Planning)** — `construction/plans/probe-code-generation-plan.md` **approved 2026-07-14** (+adversarial review F1-F6). 6 배선, changeme 잠정 tool-failed(F5).
+- **Build and Test** — **local gates green 2026-07-14** (`construction/build-and-test/probe-build-and-test-summary.md`, approval pending). 로컬 실행·통과: build·vet(+integration)·gofmt·arch-check·`go test ./... -race`·**gosec 0**·**govulncheck 0**·probe 커버리지 94%. Docker 위임: 이미지 빌드·probe-integration(실 툴, 12→1)·trivy/syft·Mongo/Valkey 통합. F6: 파서 스키마/골든/Docker 핀은 CI 첫 빌드에서 확정.
+- **Code Generation Part 2 (Generation)** — **CODE COMPLETE (local green) 2026-07-14, approval pending**. Delivered: `exec_linux.go`/`exec_other.go`(프로세스그룹 kill, NFR-P1, 손자사멸 유닛증명) · `parsers.go`(6 argv+JSON 파서) · `testdata/*.json` 골든 · `adapters.go` newStub→newWired(6) · 테스트 재작성(TestDefault_SixWired_ChangemeStub·TestWiredAdapter_MissingBinary_ReportsError·e2e 개명) · 통합 e2e `//go:build integration` · Dockerfile 멀티스테이지(python-slim+pipx+testssl번들openssl+go install httpx/subzy+non-root+/scratch) · worker.yaml scratch+TMPDIR · compose read_only+tmpfs+cap_drop · CI probe-integration 잡. **Verified local**: build/vet(+integration)/gofmt/arch-check OK, `go test ./... -race` green. **정직성 불변식 유지**: wired≠binary-present(부재 시 tool-failed). 카운트: 부재 12 / 통합 12→1(PS-019만). **F6 잠정**: 파서/골든/Docker 핀은 실 툴 출력 대비 미검증 → Build&Test(Docker)에서 확정. changeme(PS-019) 미배선. 멀티스테이지: go-build(chiller+httpx+subzy)+testssl(git tag+번들 openssl)→python-slim 런타임+pipx(humble/dirhunt/changeme/Corsy). 하드닝: non-root·read-only FS·cap drop ALL. blocking=0. 리스크: changeme Py2(Code Gen 해소)·이미지 크기.
+- AI-DLC docs now tracked in repo (cde98c9); `.aidlc-rule-details/` restored from sibling repo.
+
 ## Stage Progress
 ### 🔵 INCEPTION PHASE
 - [x] Workspace Detection (via relocation from coolant; greenfield build)
@@ -193,6 +210,18 @@ JS, and nothing synthesizes the well-known artifacts these signatures need.
   are real anchors, just starved of input.
 - **Acceptance**: on a target that actually exposes `/robots.txt`, `/.env`, etc., the corresponding
   PS item flips to a real finding; coverage still partitions 26; anchors stay tight (no new FPs).
+
+### 🟣 Deferred infra work (still tracked — lived only in infra-plan; re-surfaced 2026-07-14)
+These are NOT dropped; they are the planned follow-ups after probe wiring, and probe operation
+**interacts** with them (see execution-plan-probe.md §4b G1-G4). User's order: probe → §2 → §4.
+- **§2 Financial auth-proxy hardening (PR-12)** — Chromium provisioning + `playwright install`; HTTPS via
+  CONNECT + bundled MITM CA (`authProxy.handle` currently rejects non-absolute-form); interception hardening
+  (streaming/WebSocket/large bodies); **storageState lifecycle + session auto-refresh/token rotation**;
+  **LoginKeeper integration** (팀원 login-agent가 `proxy.LoginKeeper` 구현 → 예약된 keep-alive 탭 구동; 인터페이스+슬롯 이미 존재). *probe 접점*: 프록시가 HTTPS 터널링을 못 하므로 §2 전까지 financial+HTTPS probe 불가(G2). **⚠️ probe가 작업 탭 풀 T를 소비함**(코드 확인: `authProxy.handle→session.Do→pool.acquire`) — 브라우저 종속 세션이라 인증 요청은 Chromium 컨텍스트로 재발행되고 T로 게이트됨. probe 트래픽이 네이티브 워커와 T를 경쟁하며, dirhunt 등 대량요청 probe가 T를 포화시킬 수 있음. **§2에서 T 사이징/예산 분리/직결 분기 결정 필요** — "work-pool 변경 불요" 전제는 probe 배선으로 무효화됨(G3). **⚠️ 세션 인증 방식(2026-07-14)**: 대상 금융앱은 JS 실행 종속 토큰(localStorage/in-memory Bearer) 가능성 큼. 현 `session.Do`=`bctx.Request().Fetch`(APIRequestContext)는 쿠키만 공유·JS 미실행이라 JS-부착 Bearer 안 실림. §2는 더 무거운 설계: (a) page.evaluate 토큰 추출+헤더 주입, (b) 인증 page 자체 `fetch` 재발행(요청당 실제 page=최중량). 둘 다 T가 실제-page 바인딩 → G3 심화. 상세: infra-plan §2 Design decision.
+- **§4 Dynamic JS asset discovery (Post-MVP, r5/A-6/HC1)** — `PlaywrightDiscoverer`: Chromium으로 대상 로드,
+  요청된 JS URL을 net-capture. 같은 `fetch.Discoverer` seam → drop-in. approved-host-only + fan-out cap 보존.
+  *probe 접점*: URL-scoped probe 볼륨이 발견 URL 집합에 비례(G4); `hasPasswordField` SPA 오탐의 실제 해법.
+- **Browser transport hardening** = production-readiness.md #4와 동일(§2 재진술).
 
 ### Done
 - **retryablehttp-go for scan Fetcher resilience** — ✅ **DONE 2026-07-10**. Adopted `github.com/projectdiscovery/retryablehttp-go v1.3.17` in `internal/scan/fetch`: gated client wrapped with bounded exponential backoff, default `WithRetries(2)`. **Rate-budget constraint honored**: `checkRetry` charges `lim.Acquire(host)` per retry → each attempt spends one token (test-proven, no SR-4 bypass). Redirect re-gate preserved on both HTTPClient + the HTTP/2 fallback (`HTTPClient2` pointed at the same gated client → no fail-open seam). 5xx not retried (valid observed response); scope rejection fails fast; per-request ctx deadline remains the SR-8 bound. Tests in `retry_test.go`. Module green (build/vet/test/-race, gofmt, arch-check). Summary appended to `construction/scan/code/business-logic-summary.md`.

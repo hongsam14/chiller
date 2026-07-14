@@ -879,3 +879,147 @@ VERIFIED: build/vet/gofmt/arch-check OK, `go test ./...` pass, `-race` clean.
 **Context**: INCEPTION - Requirements Analysis (probe increment); repo-hygiene policy change.
 
 ---
+
+## Requirements Analysis — probe increment answers
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "답변 완료" — Q1=A (전부 7개, 레거시 적을 때 지금 대응), Q2=B (멀티스테이지 + 툴 전용 베이스, non-distroless 감수), Q3=A (생태계별 관용 pinning), Q4=C (유닛 exec 경로 + 통합 골든 둘 다; "서브프로세스 & 이미지 상태를 동기화하며 추적해야 좀비 프로세스/image가 발생하지 않음"), Q5=A (JSON 출력 모드 우선 + 골든 픽스처), Q6=A (미배선 tool-failed 정직성 불변).
+**AI Response**: No contradictions. Two flagged implications carried into requirements: (1) Q2=B amends SECURITY-09 (distroless nonroot) — documented as deliberate risk acceptance with mitigations (non-root user, digest pin, minimal slim base, read-only FS, dropped caps); (2) Q4 zombie-process concern → explicit resiliency NFR: subprocess lifecycle must kill the whole process group on timeout/cancel (testssl.sh/openssl + Python tools spawn children; exec.CommandContext kills only the direct child). Generating requirements.md.
+**Context**: INCEPTION - Requirements Analysis (probe increment). Answers validated.
+
+---
+
+## Requirements Analysis — completion (approval prompt)
+**Timestamp**: 2026-07-14T00:00:00Z
+**AI Response**: Generated `inception/requirements/requirements-probe.md` (FR-P1..P7, NFR-P1..P6, extension compliance with SECURITY-09 amendment documented). Updated aidlc-state.md Active Increment section. Presenting REVIEW REQUIRED / Approve & Continue gate. Awaiting explicit approval before Workflow Planning.
+**Context**: INCEPTION - Requirements Analysis (probe increment). Approval gate.
+
+---
+
+## Requirements Analysis — approval + Workflow Planning
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: Requirements approved. Ran Workflow Planning (ALWAYS). Created `inception/plans/execution-plan-probe.md`: brownfield app+infra transformation, Risk=Medium. EXECUTE = Infrastructure Design, Code Generation, Build and Test (+ Operations placeholder update closing production-readiness blocking #0). SKIP = Reverse Eng (coolant reuse), User Stories (infra/tooling, no persona), Application Design (no new components/methods, PR-11 interface unchanged), Units Generation (single scan/probe unit), Functional Design (parser = adapter glue to existing domain.Finding; mapping tables go in Code Gen plan), NFR Requirements + NFR Design (NFR-P1..P6 already fully enumerated in requirements-probe.md — re-derivation is a no-op, same logic as CI increment). Mermaid validated (subgraph/end balanced, no undeclared link nodes). Presenting Approve & Continue gate → Infrastructure Design.
+**Context**: INCEPTION - Workflow Planning (probe increment). Approval gate.
+
+---
+
+## Workflow Planning — revision (deferred-work interactions)
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "누락된 계획 있는지 확인. 금융권 auth, 세션 유지 브라우저 대여, js 캡쳐 같은 요소들이 todo에 언급이 사라진게 마음에 걸림. probe 작업 이후 이 작업들을 할건데, probe가 동작할때 영향이 있을거임."
+**AI Response**: Confirmed the elements were NOT deleted — they live in infra-plan §2 (financial auth-proxy hardening: Chromium provisioning, HTTPS CONNECT+MITM, storageState lifecycle+session auto-refresh, LoginKeeper integration) and §4 (PlaywrightDiscoverer JS net-capture), plus production-readiness #4 and §7 order items 4/6. They had merely dropped out of the aidlc-state Backlog prose when it was reorganized around detection-fidelity. Re-surfaced them as a new "🟣 Deferred infra work" Backlog section. Analyzed probe↔deferred interactions and added execution-plan-probe.md §4b with guardrails G1-G4: (G1) per-tool proxy-env honoring must be verified or single-session invariant is bypassed; (G2) financial-mode HTTPS-through-proxy is pending §2 (proxy has no CONNECT/MITM yet) — test proxy path over HTTP/fake, document the gap honestly; (G3) single-session funnel + session-lifetime vs long host scans → session auto-refresh (§2) dependency; (G4) URL-scoped probe volume scales with §4 discovery, so NFR-P1/P2 must hold under larger fan-out, and Chromium bundling shares the probe Dockerfile discipline. Re-presenting the plan for approval.
+**Context**: INCEPTION - Workflow Planning (probe increment). Plan revised per user feedback; re-approval gate.
+
+---
+
+## Workflow Planning — correction: probe consumes tab pool T
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "probe가 tab pool을 쓰게 될 수도 있음. 금융권같은경우는 세션이 브라우저 종속적이라"
+**AI Response**: User is correct; verified against code. Because the financial session is browser-dependent (auth state = cookies/localStorage in the Chromium context via storageState), the only way to make an authenticated request is to re-issue it through that browser context — and `authProxy.handle → session.Do → pool.acquire` gates every such request on the WORK tab pool T (internal/platform/proxy/{authproxy,session}.go). Native fetch workers ALSO egress through the same proxy (WithProxy), so in financial mode every proxied probe request consumes a T slot and contends directly with worker scan traffic. My earlier G3 ("probes go through the HTTP layer, do NOT consume tab-pool slots") was wrong — corrected. High-request probes (dirhunt directory bruteforce, httpx, Corsy) can saturate T and starve scan workers. The proxy applies TWO gates per request: per-host rate budget (lim.Acquire, SR-4) + tab pool T. Updated execution-plan-probe.md §4b G3 with the corrected model and flagged as a §2 decision (size T for probe demand / separate probe sub-budget / direct-path for auth-free targets); scoped THIS increment to wire+verify probes in direct/non-financial mode, deferring authenticated financial probing (T contention + HTTPS MITM) to §2. Updated aidlc-state §2 Deferred note (⚠️ "work-pool 변경 불요" invariant invalidated by probe wiring). Re-presenting plan.
+**Context**: INCEPTION - Workflow Planning (probe increment). Correction from user; re-approval gate.
+
+---
+
+## §2 design direction — JS-token session needs heavier design (recorded)
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "JS 실행 종속 토큰일 가능성이 큼. 그래서 너가 말한 [쿠키 기반=재현, localStorage 토큰=재현 안 됨]은 더 무거운 설계로 가야 함."
+**AI Response**: Recorded the §2 session-auth direction as a durable design decision (infra-plan §2 "Design decision (2026-07-14)" + aidlc-state §2 deferred note). Confirmed: target financial apps likely use JS-execution-dependent tokens (Bearer in localStorage/in-memory attached by SPA JS), which the current APIRequestContext path (bctx.Request().Fetch — shares cookie jar, runs no page JS) does NOT carry. §2 must upgrade to a heavier session design: (a) page.evaluate token extraction + Authorization header injection (lighter; needs readable token; re-read on rotation → session auto-refresh), or (b) route the tool's request through the authenticated page's own fetch (most faithful; real page per concurrent request; fetch/CORS-constrained). Both make tab pool T real-page-bound, shrinking effective T and sharpening the G3 probe-vs-worker contention (dirhunt must be throttled; T re-sized for real-page cost). Does NOT change the pending probe increment (probes stay direct/non-financial); it sets the §2 session contract: cookie → keep APIRequestContext, JS-token → real-page routing (a or b) + refresh.
+**Context**: INCEPTION - Workflow Planning (probe increment). §2 forward design decision recorded; probe plan unchanged, still awaiting approval.
+
+---
+
+## Scope decision recorded — passive core + active-probe coverage + session prerequisite
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "커버리지 때문에 능동은 있어야 해. 능동을 유지하기 위해선 세션 설계가 필수적이라는거지?" → "aidlc-docs에 결정 문서로 박아줘"
+**AI Response**: Ran an exhaustive audit (전수 조사) of implemented + planned features against the stated scope (static/passive analysis of captured backend API traffic + page-exposed assets). Finding: chiller itself has NO exploit/fuzz/payload logic (code-verified); active behavior enters ONLY via 5 of the 7 OSS probes (testssl active-TLS-enum, dirhunt dir-bruteforce, changeme cred-testing[most attack-like], Corsy CORS-probing, subzy subdomain-recon). In-scope-passive = 17 items (observation 10 + humble 5 + httpx 2) + all capture infra. Corrected the user's premise: session design is NOT an active-probe prerequisite — active probes run direct against the unauthenticated surface; the session is the prerequisite for reaching the POST-LOGIN surface (applies to passive checks too). Of the 5 active probes only dirhunt+Corsy use the session; testssl(DirectOnly)/changeme(pre-auth)/subzy(recon) don't. Session design's real value = authenticated passive checks (PS-003/009/013/023 + humble/httpx headers) + PlaywrightDiscoverer's captured authed API traffic (the scope's core). Recorded as decision doc `inception/requirements/scope-decision-active-vs-passive.md` (D1 keep active probes for coverage; D2 session = post-login coverage prerequisite, not active-specific) with cross-refs added to aidlc-state.md (Scope Decision section) and infra-plan.md §2 (Scope note). No production code changed.
+**Context**: INCEPTION - scope clarification during Workflow Planning (probe increment). Decision documented; probe plan unchanged, still awaiting approval.
+
+---
+
+## Workflow Planning — approved; entering Infrastructure Design
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: Workflow Planning approved. Marked complete in aidlc-state.md. Entering CONSTRUCTION → Infrastructure Design (unit scan/probe) — the first EXECUTE stage. Creating the infrastructure design plan with embedded clarifying questions (runtime base image, python-tool isolation, testssl openssl fidelity, integration-test locus, read-only FS scratch).
+**Context**: CONSTRUCTION - Infrastructure Design (probe increment). Plan + questions.
+
+---
+
+## Infrastructure Design — answers
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "답변 완료" — IQ1=A (python:3.12-slim-bookworm), IQ2=A (pipx per-tool venv), IQ3=B (testssl bundled openssl), IQ4=A (integration test inside built probe image), IQ5=B (disk emptyDir scratch).
+**AI Response**: No contradictions. Generating infrastructure-design artifacts. Noted honest risks: changeme is historically Python2 (resolve maintained fork / py2 in code-gen); Corsy/changeme likely git-sourced (not PyPI) → pipx-from-pinned-SHA. IQ3=B naturally satisfied by checking out the testssl repo at a pinned tag (ships bin/openssl.* static) → --openssl=. IQ5=B disk scratch: per-pod ephemeral emptyDir, cleared per scan; must not retain captured bodies beyond run (FR-12 note; evidence wiping stays with ResponseCache.WipeScan).
+**Context**: CONSTRUCTION - Infrastructure Design (probe increment). Answers validated → artifacts.
+
+---
+
+## Infrastructure Design — artifacts generated (approval gate)
+**Timestamp**: 2026-07-14T00:00:00Z
+**AI Response**: Generated construction/scan/infrastructure-design/{probe-infrastructure-design,deployment-architecture,compliance-summary}.md. Multi-stage image: go-build (chiller + httpx + subzy via go.mod tool directive/go.sum) + testssl checkout (pinned tag, bundled bin/openssl per IQ3=B) → python:3.12-slim-bookworm runtime (digest-pinned) + pipx per-tool venvs (humble/dirhunt/changeme/Corsy, IQ2=A). Hardening (NFR-P4, SECURITY-09 amendment): non-root, read-only root FS, disk emptyDir /scratch (IQ5=B, TMPDIR), drop ALL caps, no-new-privileges. Integration golden tests run inside the built image (IQ4=A). Deployment delta: k8s securityContext + scratch volume + resource bump; compose read_only+scratch; CI integration-in-image + trivy/syft on new layers. Compliance: SECURITY-09 amended (documented risk acceptance, non-blocking), SECURITY-10/13 pinning satisfied; blocking findings = 0. Risks flagged: changeme Python2 heritage (resolve in Code Gen), image size. Plan S1-S9 marked complete. Presenting Continue-to-Next-Stage gate → Code Generation.
+**Context**: CONSTRUCTION - Infrastructure Design (probe increment). Approval gate.
+
+---
+
+## Infrastructure Design — approved; entering Code Generation
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: Infrastructure Design approved. Marked complete in aidlc-state.md. Entering Code Generation Part 1 (Planning) for unit scan/probe.
+**Context**: CONSTRUCTION - Code Generation Part 1 (probe increment).
+
+---
+
+## Code Generation Part 1 (Planning) — plan created (approval gate)
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Continue to Next Stage" (approving Infrastructure Design)
+**AI Response**: Infrastructure Design approved, marked complete. Created Code Generation plan `construction/plans/probe-code-generation-plan.md`. 5 phases, ~19 numbered steps: Phase A (exec_linux.go process-group kill for NFR-P1 zombie prevention + exec unit tests), Phase B (7 tools: argv + JSON parser + golden fixture + unit test each; adapters.go newStub→newWired), Phase C (rewrite honesty/coverage tests — key insight: wired-but-binary-absent still ToolFailed in plain go test, so "checked rises" is proven only in the in-image integration test), Phase D (multi-stage Dockerfile + go.mod tool pins + python pipx pins + deploy hardening + CI integration-in-image; changeme Py2 resolved here), Phase E (summary). Local acceptance = unit parsers(golden) + exec framework(light real binary, pgroup kill) green; Docker/integration acceptance deferred to Build & Test. changeme Py2 risk: resolve in D2 or keep PS-019 honestly tool-failed. Presenting plan-approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 1 (probe increment). Approval gate before Part 2 generation.
+
+---
+
+## Code Generation Part 1 — plan reviewed + amended (F1-F6)
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Code generation plan review" → (decision) "6개 배선 + changeme 잠정 tool-failed (권장)"
+**AI Response**: Ran an adversarial self-review of the code-gen plan; found 5 real issues + 1 false alarm. F1 (real): testssl --jsonfile writes to a file but Parser contract is Parser(target, stdout) — mismatch; fixed to `--jsonfile /dev/stdout` (JSON to stdout). F2 (CI-breaking): golangci `default: standard` includes `unused`; wiring all 7 leaves newStub/stubParse unused → lint failure; resolved by keeping changeme on newStub (F5) so the honesty seam stays used. F4 (honesty): integration on a benign target proves "ran→Checked (exec+schema parse)", NOT positive findings (weak-target CI reproduction infeasible); positive-finding parsing proven by golden fixtures only. F6 (honesty): golden fixtures are hand-authored → parsers are unvalidated vs real tool output until the Docker integration run (deferred to Build&Test/CI). F3 (false alarm): depguard only denies internal/platform imports — syscall/x/sys for process-group kill is fine. F5 (decision): wire 6 (humble/httpx/Corsy/testssl/dirhunt/subzy), keep changeme/PS-019 honestly tool-failed (Py2 heritage, active cred-testing, uncertain JSON) → resolve in a later increment. Count impact: plain go test still 12 tool-failed (binaries absent); in-image integration 12→1 (only PS-019 remains). Amended probe-code-generation-plan.md (B4/B5/B8/C1/C2/C3/D2/E1 + risk section). Re-presenting amended plan for approval.
+**Context**: CONSTRUCTION - Code Generation Part 1 (probe increment). Plan amended per review; re-approval gate.
+
+---
+
+## Code Generation Part 1 — approved; executing Part 2
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: Code-gen plan (amended F1-F6) approved. Executing Part 2 generation: Phase A (exec pgroup-kill), B (6 argv+parsers+golden), C (test rewrites), D (image/pins/deploy/CI), E (summary).
+**Context**: CONSTRUCTION - Code Generation Part 2 (probe increment).
+
+---
+
+## Code Generation Part 2 — generated (approval gate)
+**Timestamp**: 2026-07-14T00:00:00Z
+**AI Response**: Executed the code-gen plan. Phase A: exec_linux.go (Setpgid + Cancel kill -pgid + WaitDelay) + exec_other.go fallback; moved defaultExec out of probe.go; exec_linux_test.go proves the timeout kills the whole process group (grandchild reaped). Phase B: parsers.go with argv+JSON parsers for humble/httpx/Corsy/testssl(--jsonfile /dev/stdout, F1)/dirhunt/subzy; testdata/*.json golden fixtures; parsers_test.go (8 tests incl. malformed→error, empty→clean); adapters.go newStub→newWired for the 6, changeme kept on newStub (F5). Phase C: probe_test.go rewrites (TestDefault_SixWired_ChangemeStub, TestWiredAdapter_MissingBinary_ReportsError; TestUnwiredAdapter_FailsWithErrNotWired retained for changeme); e2e renamed TestE2E_ProbesWithoutBinaries_ToolFailed_NotChecked with wired≠binary-present rationale; integration_test.go //go:build integration. Phase D: multi-stage Dockerfile (python:3.12-slim-bookworm + pipx humble/dirhunt + Corsy clone-wrapper + go install httpx/subzy + testssl git tag w/ bundled openssl + non-root + /scratch/TMPDIR); worker.yaml scratch emptyDir+TMPDIR; docker-compose read_only+tmpfs+cap_drop+no-new-privileges; CI probe-integration job (compile static -tags integration binary, run inside built image). Phase E: probe-business-logic-summary.md. VERIFIED local: go build ./... + go vet ./...(+-tags integration) + gofmt -l clean + go test ./... -race pass + make arch-check OK. Honesty invariant preserved (wired!=binary-present → tool-failed). Counts: plain 12 tool-failed; in-image integration 12→1 (PS-019 only). F6 honest limitation: parser schemas/golden/Docker pins unverified vs real tool output until the Docker probe-integration run (Build & Test). changeme/PS-019 deliberately unwired (F5). Presenting Continue-to-Next-Stage gate → Build and Test.
+**Context**: CONSTRUCTION - Code Generation Part 2 (probe increment). Approval gate.
+
+---
+
+## Code Generation — approved; entering Build and Test
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: Code Generation approved, marked complete. Entering Build and Test. Running all locally-runnable gates; Docker-dependent gates (image build, probe-integration with real tools, trivy/syft) honestly deferred to CI.
+**Context**: CONSTRUCTION - Build and Test (probe increment).
+
+---
+
+## Build and Test Stage
+**Timestamp**: 2026-07-14T00:00:00Z
+**Build Status**: Success (local)
+**Test Status**: Pass (local unit/race); Docker-dependent gates deferred to CI
+**Local gates executed & passed**: go build ./... · go vet ./...(+-tags integration) · gofmt -l clean · make arch-check OK · go test ./... -race PASS · gosec 0 issues (incl. new exec.CommandContext/syscall.Kill) · govulncheck 0 affecting vulns · probe pkg coverage 94.0% · module coverage 52.0%. NFR-P1 process-group kill empirically proven (grandchild reaped). Honesty invariant proven (wired!=binary-present → tool-failed).
+**Deferred to CI (no Docker/network here)**: multi-stage image build; probe-integration (real tools in-image, tool-failed 12→1, first real validation of hand-authored parser schemas F6); Mongo/Valkey integration; trivy/syft.
+**Files Generated**: construction/build-and-test/probe-build-and-test-summary.md
+**Context**: CONSTRUCTION - Build and Test (probe increment). Approval gate → Operations.
+
+---
+
+## Build and Test — approved; Operations reached
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: Build and Test approved. Reached OPERATIONS (placeholder — no deployment build in this workflow). Updated operations/production-readiness.md: blocking #0 (wire probes) → DONE (6/7 wired: humble/httpx/Corsy/testssl/dirhunt/subzy; changeme/PS-019 deferred F5); added remaining gates #0a (run in-image probe-integration once on Docker — first real validation of hand-authored parser schemas F6, tool-failed 12→1) and #0b (confirm tool version pins + pin python base by digest). Updated carried-limitation #2 (probe stubs → resolved 6/7). On a real run chiller now judges up to 21/26 items (10 observation + 11 probe-owned). aidlc-state Active Increment marked CONSTRUCTION complete + Operations reached. Presenting Operations completion gate.
+**Context**: OPERATIONS (probe increment). Placeholder reached; production-readiness updated.
+
+---

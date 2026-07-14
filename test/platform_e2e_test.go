@@ -178,12 +178,17 @@ func TestE2E_SubmitToReport_26Partition(t *testing.T) {
 // reported as ToolFailed ("we obtained no verdict"), never as Checked. Reporting
 // Checked would present 12 of the 26 KISA items as clean when no tool ever ran —
 // a silent false negative for every weakness they own. This test folds real
-// probe outcomes through the real orchestrator, so it fails the moment an
-// unwired probe starts looking like a clean run again.
+// probe outcomes through the real orchestrator, so it fails the moment a probe
+// starts looking like a clean run again.
 //
-// When a probe is genuinely wired (infra-plan §3), its items move Checked and
-// the counts below shift — update them deliberately, as proof of real coverage.
-func TestE2E_UnwiredProbes_ReportedAsToolFailed_NotChecked(t *testing.T) {
+// Note on counts after the probe-wiring increment: six probes are now WIRED
+// (argv present), but this plain `go test` installs none of the tool binaries,
+// so a wired probe's exec still fails → ToolFailed (changeme, still unwired,
+// fails with ErrNotWired). Wired != binary-present, so the tool-failed count
+// stays 12 here. "Checked rises" (tool-failed 12→1) is proven only in the
+// in-image integration suite where the real binaries exist — see the
+// //go:build integration e2e.
+func TestE2E_ProbesWithoutBinaries_ToolFailed_NotChecked(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`<html><body>ok</body></html>`))
 	}))
@@ -200,7 +205,7 @@ func TestE2E_UnwiredProbes_ReportedAsToolFailed_NotChecked(t *testing.T) {
 		t.Fatalf("coverage is not a valid 26-partition: %v", err)
 	}
 
-	// Items owned solely by the (unwired) probes carry no verdict.
+	// Items owned solely by probes carry no verdict here (no binary present).
 	for _, id := range []domain.PSID{"PS-001", "PS-002", "PS-025"} { // humble, testssl, subzy
 		if got := rep.Coverage[id].Status; got != domain.StatusToolFailed {
 			t.Errorf("%s is probe-owned and no probe is wired — want ToolFailed (no verdict), got %v", id, got)
@@ -224,12 +229,13 @@ func TestE2E_UnwiredProbes_ReportedAsToolFailed_NotChecked(t *testing.T) {
 			na++
 		}
 	}
-	// The 12 probe-owned items are unjudged. The 10 observation-owned items were
-	// judged — each landing Checked or (legitimately, for this bare target) N/A;
-	// the split between those two is target-dependent, so only their sum is fixed.
+	// The 12 probe-owned items are unjudged (no binaries in this env). The 10
+	// observation-owned items were judged — each landing Checked or (legitimately,
+	// for this bare target) N/A; the split is target-dependent, so only their sum
+	// is fixed.
 	if failed != 12 || delegated != 4 || checked+na != 10 {
 		t.Errorf("honest accounting drifted: checked=%d n/a=%d tool-failed=%d delegated=%d "+
-			"(want 12 unwired-probe unjudged, 4 delegated, 10 observation judged)",
+			"(want 12 probe-owned unjudged [no binaries], 4 delegated, 10 observation judged)",
 			checked, na, failed, delegated)
 	}
 	if checked == 0 {

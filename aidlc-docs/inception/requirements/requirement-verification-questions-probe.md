@@ -39,7 +39,7 @@ C) **Go-native 2개 + testssl.sh** — 위 B에 TLS(PS-002, 컴플라이언스 �
 
 X) Other (please describe after [Answer]: tag below)
 
-[Answer]:
+[Answer]: A. 결국 언젠가 대응해야하는 것이기 때문에 레거시 코드가 적은 지금 대응하는게 맞음
 
 ---
 
@@ -57,7 +57,7 @@ D) **distroless 유지 + Python/bash 툴은 이번에 안 함** — 결국 Q1=B�
 
 X) Other (please describe after [Answer]: tag below)
 
-[Answer]:
+[Answer]: B
 
 ---
 
@@ -70,7 +70,7 @@ B) **릴리스 바이너리 + sha256 검증 일괄** — 가능한 건 배포된
 
 X) Other (please describe after [Answer]: tag below)
 
-[Answer]:
+[Answer]: A
 
 ---
 
@@ -85,7 +85,7 @@ C) **A + B 둘 다** — 유닛에서 exec 경로 커버 + 통합에서 각 실�
 
 X) Other (please describe after [Answer]: tag below)
 
-[Answer]:
+[Answer]: C. 결국 툴의 stdin 혹은 param을 주입해줘야 하고, 스캐닝이라는 긴 결과를 서브프로세스 & 이미지의 상태를 동기화하면서 추적해야 좀비 프로세스, image가 발생하지 않음.
 
 ---
 
@@ -98,7 +98,7 @@ B) **각 툴이 판정한 것만 최소 매핑** — 툴이 "취약"이라 한 �
 
 X) Other (please describe after [Answer]: tag below)
 
-[Answer]:
+[Answer]: A
 
 ---
 
@@ -109,4 +109,4 @@ A) **현행 유지** — 미배선 툴은 계속 `tool-failed`(정직한 무판�
 
 X) Other (please describe after [Answer]: tag below)
 
-[Answer]:
+[Answer]: A

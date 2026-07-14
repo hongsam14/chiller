@@ -45,6 +45,38 @@ Deferred to Infra/Build:
 
 Acceptance: an HTTPS financial scan routes every worker through the one authenticated session; testssl still reaches the origin directly; keep-alive tab never reduces work concurrency (already unit-proven with the fake).
 
+### Scope note (2026-07-14) — 세션 설계는 인증 표면 커버리지 전제 (능동·수동 공통)
+세션 설계는 "능동 probe를 위한 것"이 아니라 **로그인 뒤 백엔드 API 표면을 스캔하기 위한 엔진 전체 전제**다.
+능동 probe 5개 중 세션을 쓰는 건 **dirhunt·Corsy 2개뿐** — testssl(DirectOnly·TLS)·changeme(pre-auth 크리덴셜 시도)·subzy(서브도메인 정찰)는 세션과 무관. 세션이 진짜 살리는 건 인증 수동검사(PS-003/009/013/023·humble/httpx 헤더) + PlaywrightDiscoverer가 캡처하는 인증 API 트래픽·자산(스코프 본체). 근거·전수표: `inception/requirements/scope-decision-active-vs-passive.md`.
+
+### ⚠️ Design decision (2026-07-14) — authenticated re-issue must upgrade from APIRequestContext to real-page routing
+**Confirmed direction**: the target financial apps most likely use **JS-execution-dependent tokens**
+(Bearer held in localStorage / in-memory, attached to each request by the SPA's own JS), NOT plain
+cookie sessions. The current `session.Do` re-issues each proxied request via
+`bctx.Request().Fetch(...)` — an **APIRequestContext** that shares the context **cookie jar but runs
+no page JS**. Consequence (verified against the code + Playwright semantics):
+- **Cookie-based auth** → carried faithfully today. ✅
+- **JS-attached Bearer (localStorage/in-memory)** → **NOT attached**, because no app JS runs to read
+  the token and set `Authorization`. storageState carrying localStorage does not help — turning it
+  into a header is the app JS's job. ❌
+
+So the MVP path does **not** truly issue "as the authenticated tab" for JS-token apps. §2 must go to a
+**heavier session design**. Two options (decide in §2):
+- **(a) Token extraction + header injection** — a page in the auth context runs `page.evaluate` to read
+  the current token (localStorage / exposed JS state); the proxy injects `Authorization: Bearer …` into
+  each forwarded request. Lighter; works only if the token is readable (not a closed-over in-memory value).
+  Must re-read on rotation (ties to **session auto-refresh**).
+- **(b) Route via the page's own `fetch`** — issue the tool's request through the authenticated page's JS
+  (`page.evaluate(() => fetch(...))`) so the SPA's fetch layer / service worker attaches auth exactly as
+  in-app. Most faithful; **heaviest** — consumes a **real page per concurrent request**, constrained by
+  fetch/CORS/origin semantics, response marshaled through JS.
+- **Tab-pool impact**: both make T **real-page-bound** (heavier than an APIRequestContext fetch), so
+  effective T shrinks and the **probe-vs-worker contention on T (G3) sharpens** — high-request probes
+  (dirhunt) must be throttled hard, and T sizing must reflect real-page cost.
+
+This does **not** change the current probe increment (probes wire direct/non-financial). It sets the
+§2 session contract: **cookie → keep APIRequestContext; JS-token → real-page routing (a or b) + refresh.**
+
 ---
 
 ## 3. Probe CLI binaries + real parsers (SECURITY-10, C-5) — **TOP PRIORITY (§7 #1)**
