@@ -1,6 +1,10 @@
 package probe
 
-import "github.com/hongsam14/chiller/internal/domain"
+import (
+	"time"
+
+	"github.com/hongsam14/chiller/internal/domain"
+)
 
 // Indicative CWE ownership per probe (authoritative rows pinned at C-5, kept in
 // sync with configs/mappings/kisa.yaml). Distinct CWEs — no two checkers share a
@@ -38,18 +42,27 @@ func newWired(id domain.CheckerID, tool string, scope domain.ScopeKind,
 	return &runner{id: id, tool: tool, version: "pinned@build", scope: scope, cwes: cwes, argv: argv, parse: parse}
 }
 
+// newWiredFile builds a real adapter for a FILE-output tool: the tool writes its
+// JSON to a temp file (outArg injects the path) and the parser reads that file.
+// Most probes work this way — only httpx streams JSON to stdout (discovered by
+// the first in-image run, F6).
+func newWiredFile(id domain.CheckerID, tool string, scope domain.ScopeKind,
+	outArg func(domain.Target, string) []string, parse Parser, cwes ...domain.CWE) *runner {
+	return &runner{id: id, tool: tool, version: "pinned@build", scope: scope, cwes: cwes, outArg: outArg, parse: parse}
+}
+
 // The 7 probe adapters (r5 composition). URL-scoped: humble, httpx, Corsy,
 // changeme. Host-scoped: testssl, dirhunt, subzy. Six are wired this increment;
 // changeme stays unwired (Python2 heritage + active credential-testing +
 // uncertain JSON schema — wired in a later increment, infra-plan §3).
 func Humble() Adapter {
-	return newWired("probe:humble", "humble", domain.URLScoped, humbleArgv, humbleParse, cwesHumble...)
+	return newWiredFile("probe:humble", "humble", domain.URLScoped, humbleOutArg, humbleParse, cwesHumble...)
 }
 func Httpx() Adapter {
 	return newWired("probe:httpx", "httpx", domain.URLScoped, httpxArgv, httpxParse, cwesHttpx...)
 }
 func Corsy() Adapter {
-	return newWired("probe:corsy", "corsy", domain.URLScoped, corsyArgv, corsyParse, cwesCORS...)
+	return newWiredFile("probe:corsy", "corsy", domain.URLScoped, corsyOutArg, corsyParse, cwesCORS...)
 }
 
 // Changeme is deliberately NOT wired this increment (F5): its items (PS-019)
@@ -62,15 +75,18 @@ func Changeme() Adapter { return newStub("probe:changeme", "changeme", domain.UR
 // meaningless (PR-12c). It is the only probe that declares DirectOnly; every
 // other checker keeps the ProxyEligible default.
 func Testssl() Adapter {
-	r := newWired("probe:testssl", "testssl.sh", domain.HostScoped, testsslArgv, testsslParse, cwesTLS...)
+	r := newWiredFile("probe:testssl", "testssl.sh", domain.HostScoped, testsslOutArg, testsslParse, cwesTLS...)
 	r.transport = domain.DirectOnly
+	r.timeout = 180 * time.Second // full TLS enumeration is slow (many handshakes)
 	return r
 }
 func Dirhunt() Adapter {
-	return newWired("probe:dirhunt", "dirhunt", domain.HostScoped, dirhuntArgv, dirhuntParse, cwesDir...)
+	r := newWiredFile("probe:dirhunt", "dirhunt", domain.HostScoped, dirhuntOutArg, dirhuntParse, cwesDir...)
+	r.timeout = 180 * time.Second // dirhunt crawls; the 30s default kills it mid-crawl
+	return r
 }
 func Subzy() Adapter {
-	return newWired("probe:subzy", "subzy", domain.HostScoped, subzyArgv, subzyParse, cwesSubzy...)
+	return newWiredFile("probe:subzy", "subzy", domain.HostScoped, subzyOutArg, subzyParse, cwesSubzy...)
 }
 
 // Default returns all 7 probe adapters.

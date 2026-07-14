@@ -25,10 +25,9 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/chiller ./cmd/chiller
 # Go CLI probes, pinned by version (fetched at build; kept OUT of the app module's
 # go.mod so the app's dependency graph stays minimal — Q3=A ecosystem-idiomatic).
 RUN GOBIN=/out/bin CGO_ENABLED=0 go install github.com/projectdiscovery/httpx/cmd/httpx@v1.6.10
-RUN GOBIN=/out/bin CGO_ENABLED=0 go install github.com/PentestPad/subzy@v1.1.0
-
-# --- testssl stage: script + its bundled static openssl (IQ3=B), pinned tag ---
-FROM alpine/git:2.45.2@sha256:ba0a9c0dc0e05f4d0d68f6f8c6a7d2e2f9b3d3e3a0c1b2c3d4e5f60718293a4b AS testssl
+RUN GOBIN=/out/bin CGO_ENABLED=0 go install github.com/LukaSikic/subzy@v1.1.0
+# testssl.sh (script + its bundled static openssl, IQ3=B) — cloned here since the
+# golang image already has git; pinned by tag.
 RUN git clone --depth 1 --branch v3.2.1 https://github.com/drwetter/testssl.sh /opt/testssl
 
 # --- runtime stage ---
@@ -41,27 +40,36 @@ WORKDIR /app
 # ships its own static openssl, but bash is required); pipx for isolated Python
 # tool venvs (IQ2=A). ca-certificates for TLS egress.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash ca-certificates pipx \
+        bash ca-certificates pipx bsdextrautils procps dnsutils \
     && rm -rf /var/lib/apt/lists/*
+# testssl.sh needs `hexdump` (bsdextrautils) and a DNS lookup tool (`dig` from
+# dnsutils); procps provides process tools. All three were surfaced by the first
+# in-image run (testssl aborted "You need hexdump" then "Neither dig/host/... present").
 
-# Python probes in isolated per-tool venvs (IQ2=A — no cross-tool dep conflicts).
-# humble + dirhunt are on PyPI (version-pinned); Corsy has no PyPI release, so it
-# is cloned at a pinned commit and wrapped. changeme is NOT bundled this increment
+# Python probes. dirhunt is on PyPI (isolated venv via pipx, IQ2=A). humble
+# (rfc-st/humble) and Corsy (s0md3v/Corsy) have NO PyPI release — they are git
+# scripts, cloned + wrapped on PATH. changeme is NOT bundled this increment
 # (F5 — Python2 heritage; its PS-019 stays honestly tool-failed).
+# Pin humble/Corsy to a commit at first real build (#0b); default branch until then.
 ENV PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PATH=/usr/local/bin:$PATH
-RUN pipx install "humble==1.30" \
-    && pipx install "dirhunt==0.9.0"
-# Corsy (no release): clone at a pinned commit + a wrapper on PATH named `corsy`.
-RUN git clone https://github.com/s0md3v/Corsy.git /opt/corsy \
-    && git -C /opt/corsy checkout 5c7c72ea54d7f7c8b6d3a6f0b3f8f6b1c2d3e4f5 \
+RUN pipx install "dirhunt==0.9.0"
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && git clone --depth 1 https://github.com/rfc-st/humble.git /opt/humble \
+    # humble's runtime deps (colorama/tldextract/defusedcsv/fpdf2/requests/xlsxwriter);
+    # skip the pytest dev deps its requirements.txt also lists.
+    && pip install --no-cache-dir --break-system-packages \
+        colorama tldextract defusedcsv fpdf2 requests xlsxwriter \
+    && printf '#!/bin/sh\nexec python3 /opt/humble/humble.py "$@"\n' > /usr/local/bin/humble \
+    && git clone --depth 1 https://github.com/s0md3v/Corsy.git /opt/corsy \
     && printf '#!/bin/sh\nexec python3 /opt/corsy/corsy.py "$@"\n' > /usr/local/bin/corsy \
-    && chmod +x /usr/local/bin/corsy
+    && chmod +x /usr/local/bin/humble /usr/local/bin/corsy \
+    && apt-get purge -y git && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # chiller + Go probes + testssl (with bundled openssl).
 COPY --from=build /out/chiller /app/chiller
 COPY --from=build /out/bin/httpx /usr/local/bin/httpx
 COPY --from=build /out/bin/subzy /usr/local/bin/subzy
-COPY --from=testssl /opt/testssl /opt/testssl
+COPY --from=build /opt/testssl /opt/testssl
 RUN ln -s /opt/testssl/testssl.sh /usr/local/bin/testssl.sh
 COPY configs /app/configs
 
@@ -70,7 +78,10 @@ COPY configs /app/configs
 # scratch (dirhunt cache, testssl temp) into /scratch (an emptyDir at runtime).
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app \
     && mkdir -p /scratch && chown app:app /scratch
-ENV TMPDIR=/scratch
+# TMPDIR steers tool scratch here; HOME=/scratch so tools that cache in $HOME
+# (subzy downloads its fingerprints DB there on first run) work under a
+# read-only root FS, where /home/app would not be writable (#0c).
+ENV TMPDIR=/scratch HOME=/scratch
 USER app
 
 EXPOSE 8080

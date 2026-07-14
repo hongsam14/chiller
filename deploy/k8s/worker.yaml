@@ -14,6 +14,10 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        runAsUser: 10001
+        # fsGroup makes the /scratch emptyDir group-owned + group-writable so the
+        # non-root user can create probe temp files there under a read-only root FS.
+        fsGroup: 10001
       containers:
         - name: chiller
           image: chiller:REPLACE_WITH_DIGEST # SECURITY-10

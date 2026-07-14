@@ -15,6 +15,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/hongsam14/chiller/internal/domain"
@@ -51,8 +53,15 @@ type runner struct {
 	cwes      []domain.CWE
 	transport domain.TransportKind           // zero value = ProxyEligible (PR-12c)
 	argv      func(t domain.Target) []string // nil ⇒ stub (no external binary yet)
-	parse     Parser
-	timeout   time.Duration
+	// outArg backs file-output tools: most probes (subzy/testssl/dirhunt/corsy/
+	// humble) write their JSON to a FILE, not stdout, and pollute stdout with
+	// banner/progress text. When set, the runner creates a temp file, builds args
+	// via outArg(target, path), execs, and feeds the FILE's bytes to the parser
+	// (an empty/absent file = the tool ran and found nothing → clean). Mutually
+	// exclusive with argv. Discovered by the first real in-image run (F6).
+	outArg  func(t domain.Target, outPath string) []string
+	parse   Parser
+	timeout time.Duration
 	// proxyEnv holds extra environment (HTTP(S)_PROXY=...) injected into the
 	// subprocess in financial mode. Set only on ProxyEligible adapters by
 	// ConfigureProxy; DirectOnly adapters (testssl) keep it empty (PR-12c/d).
@@ -66,10 +75,10 @@ func (r *runner) ToolName() string                { return r.tool }
 func (r *runner) PinnedVersion() string           { return r.version }
 func (r *runner) OwnedCWEs() []domain.CWE         { return r.cwes }
 func (r *runner) Transport() domain.TransportKind { return r.transport }
-func (r *runner) Wired() bool                     { return r.argv != nil }
+func (r *runner) Wired() bool                     { return r.argv != nil || r.outArg != nil }
 
 func (r *runner) Check(ctx domain.ScanContext) (domain.CheckResult, error) {
-	if r.argv == nil {
+	if r.argv == nil && r.outArg == nil {
 		// Not wired: nothing executed, so there is no verdict. Fail loudly →
 		// StatusToolFailed, never StatusChecked (see package doc).
 		return domain.CheckResult{}, fmt.Errorf("%s: %w", r.tool, ErrNotWired)
@@ -80,7 +89,26 @@ func (r *runner) Check(ctx domain.ScanContext) (domain.CheckResult, error) {
 	}
 	cctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	args := r.argv(ctx.Target)
+
+	// File-output tools write JSON to a temp file; stdout tools parse stdout.
+	var args []string
+	var outPath string
+	if r.outArg != nil {
+		// Use a temp DIR and a path INSIDE it that does not yet exist. Some tools
+		// (dirhunt) try to READ an existing --to-file as JSON to merge into, so a
+		// pre-created empty file makes them fail with a JSON decode error. Letting
+		// the tool create the file fresh avoids that.
+		dir, err := os.MkdirTemp("", "probe-*")
+		if err != nil {
+			return domain.CheckResult{}, fmt.Errorf("%s: scratch dir: %w", r.tool, err)
+		}
+		defer func() { _ = os.RemoveAll(dir) }()
+		outPath = filepath.Join(dir, "out.json")
+		args = r.outArg(ctx.Target, outPath)
+	} else {
+		args = r.argv(ctx.Target)
+	}
+
 	run := r.exec
 	if run == nil {
 		run = defaultExec
@@ -89,7 +117,19 @@ func (r *runner) Check(ctx domain.ScanContext) (domain.CheckResult, error) {
 	if err != nil {
 		return domain.CheckResult{}, err // tool-failed for this adapter's items
 	}
-	findings, err := r.parse(ctx.Target, out)
+
+	data := out
+	if r.outArg != nil {
+		// Read the tool's JSON file. A missing/empty file means the tool ran and
+		// produced no findings → parser returns clean (Checked), NOT tool-failed.
+		// #nosec G304 -- outPath is a fixed name inside a temp dir we just created (os.MkdirTemp), not user input.
+		if b, rerr := os.ReadFile(outPath); rerr == nil {
+			data = b
+		} else {
+			data = nil
+		}
+	}
+	findings, err := r.parse(ctx.Target, data)
 	if err != nil {
 		return domain.CheckResult{}, err
 	}
