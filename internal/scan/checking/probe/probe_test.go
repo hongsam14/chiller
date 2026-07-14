@@ -33,11 +33,28 @@ func TestDefault_SevenAdapters(t *testing.T) {
 	}
 }
 
-func TestStubAdapter_RunsClean(t *testing.T) {
-	// A stub adapter (no binary wired) ran → Checked, no finding, no error.
-	res, err := Subzy().Check(domain.ScanContext{Target: domain.Target{Host: "a.test"}})
-	if err != nil || len(res.Findings) != 0 {
-		t.Errorf("stub should run clean, got findings=%d err=%v", len(res.Findings), err)
+// An unwired adapter must NOT look like a clean run. If it returned (empty, nil)
+// the fold would mark its items StatusChecked — reporting "no issue" for items
+// nothing ever examined. It must fail with ErrNotWired → StatusToolFailed.
+func TestUnwiredAdapter_FailsWithErrNotWired(t *testing.T) {
+	for _, a := range Default() {
+		if a.Wired() {
+			continue // a wired probe is exercised by TestRunner_ExecAndParse
+		}
+		_, err := a.Check(domain.ScanContext{Target: domain.Target{Host: "a.test", URL: "https://a.test/"}})
+		if !errors.Is(err, ErrNotWired) {
+			t.Errorf("%s: unwired probe must fail with ErrNotWired (→ tool-failed), got err=%v", a.ID(), err)
+		}
+	}
+}
+
+// Guards the honest default: until infra-plan §3 lands, no probe is wired.
+// When you wire one, this count drops — that is the point.
+func TestDefault_NoProbeWiredYet(t *testing.T) {
+	for _, a := range Default() {
+		if a.Wired() {
+			t.Logf("%s is now wired — update the coverage expectations in test/coverage_wiring_test.go", a.ID())
+		}
 	}
 }
 

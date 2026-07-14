@@ -174,6 +174,69 @@ func TestE2E_SubmitToReport_26Partition(t *testing.T) {
 	}
 }
 
+// THE honesty invariant: an item whose only owners are unwired probes must be
+// reported as ToolFailed ("we obtained no verdict"), never as Checked. Reporting
+// Checked would present 12 of the 26 KISA items as clean when no tool ever ran —
+// a silent false negative for every weakness they own. This test folds real
+// probe outcomes through the real orchestrator, so it fails the moment an
+// unwired probe starts looking like a clean run again.
+//
+// When a probe is genuinely wired (infra-plan §3), its items move Checked and
+// the counts below shift — update them deliberately, as proof of real coverage.
+func TestE2E_UnwiredProbes_ReportedAsToolFailed_NotChecked(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><body>ok</body></html>`))
+	}))
+	defer target.Close()
+
+	h := newHarness(t, harnessOpts{})
+	defer h.stop()
+	host := hostOf(t, target.URL)
+	id := h.submit(t, []string{target.URL + "/"}, []string{host})
+	h.waitState(t, id, platform.StateCompleted, 5*time.Second)
+
+	rep, _, _ := h.orch.GetReport(context.Background(), id)
+	if err := rep.Coverage.Validate(h.spec); err != nil {
+		t.Fatalf("coverage is not a valid 26-partition: %v", err)
+	}
+
+	// Items owned solely by the (unwired) probes carry no verdict.
+	for _, id := range []domain.PSID{"PS-001", "PS-002", "PS-025"} { // humble, testssl, subzy
+		if got := rep.Coverage[id].Status; got != domain.StatusToolFailed {
+			t.Errorf("%s is probe-owned and no probe is wired — want ToolFailed (no verdict), got %v", id, got)
+		}
+	}
+	// The in-process observation engine really did run.
+	if got := rep.Coverage["PS-009"].Status; got != domain.StatusChecked {
+		t.Errorf("PS-009 is observation-owned and ran in-process — want Checked, got %v", got)
+	}
+
+	var checked, failed, delegated, na int
+	for _, rec := range rep.Coverage {
+		switch rec.Status {
+		case domain.StatusChecked:
+			checked++
+		case domain.StatusToolFailed:
+			failed++
+		case domain.StatusDelegated:
+			delegated++
+		case domain.StatusNotApplicable:
+			na++
+		}
+	}
+	// The 12 probe-owned items are unjudged. The 10 observation-owned items were
+	// judged — each landing Checked or (legitimately, for this bare target) N/A;
+	// the split between those two is target-dependent, so only their sum is fixed.
+	if failed != 12 || delegated != 4 || checked+na != 10 {
+		t.Errorf("honest accounting drifted: checked=%d n/a=%d tool-failed=%d delegated=%d "+
+			"(want 12 unwired-probe unjudged, 4 delegated, 10 observation judged)",
+			checked, na, failed, delegated)
+	}
+	if checked == 0 {
+		t.Error("no item was actually Checked — the observation engine did not judge anything")
+	}
+}
+
 // A checker that always errors isolates to its own PS-ID (ToolFailed); the scan
 // still completes and every other item is accounted (US-027).
 func TestE2E_FailIsolation(t *testing.T) {

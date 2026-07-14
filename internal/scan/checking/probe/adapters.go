@@ -19,9 +19,12 @@ var (
 // stubParse is used until a tool's real output parser is authored (C-5).
 func stubParse(_ domain.Target, _ []byte) ([]domain.Finding, error) { return nil, nil }
 
-// newStub builds an adapter whose binary isn't wired yet: it declares its
-// identity/scope/CWEs and, when Check runs, reports nothing (Checked, no finding)
-// — so coverage stays complete while the real parser/binary land at C-5/Infra.
+// newStub builds an unwired adapter: it declares its identity/scope/CWEs — so
+// boot completeness still sees an owner for every item — but Check fails with
+// ErrNotWired, putting its items in StatusToolFailed ("no verdict") rather than
+// StatusChecked. Coverage stays a valid 26-partition and stays HONEST: these
+// items are reported as unjudged until the real argv/parser/binary land
+// (C-5 / infra-plan §3).
 func newStub(id domain.CheckerID, tool string, scope domain.ScopeKind, cwes ...domain.CWE) Adapter {
 	return &runner{id: id, tool: tool, version: "pinned@build", scope: scope, cwes: cwes, argv: nil, parse: stubParse}
 }

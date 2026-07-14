@@ -3,10 +3,18 @@
 // timeout + parse hook) is real; tool-specific output parsers ship as safe stubs
 // where the real bundled binary is needed (pinned progressively, C-5). The CLI
 // binaries themselves are bundled at Infrastructure/Build (SECURITY-10).
+//
+// An unwired adapter (no argv, no real parser, no bundled binary) MUST NOT be
+// mistaken for a clean run: it fails with ErrNotWired so its owned items land in
+// StatusToolFailed — "no verdict" — instead of StatusChecked. Reporting an item
+// as checked when nothing ever executed would turn every one of its weaknesses
+// into a silent false negative.
 package probe
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"time"
@@ -14,12 +22,22 @@ import (
 	"github.com/hongsam14/chiller/internal/domain"
 )
 
+// ErrNotWired is returned by an adapter whose CLI is not yet wired (no argv, no
+// real parser, no bundled binary). It is distinct from a genuine tool failure:
+// the tool never ran. Both classify as StatusToolFailed — chiller obtained no
+// verdict for the owned items — but the message names the real cause.
+var ErrNotWired = errors.New("probe not wired: no argv/parser/binary (infra-plan §3)")
+
 // Adapter is a probe: a domain.Checker plus tool metadata.
 type Adapter interface {
 	domain.Checker
 	ToolName() string
 	PinnedVersion() string
 	OwnedCWEs() []domain.CWE
+	// Wired reports whether this adapter can actually execute its CLI. An
+	// unwired adapter always fails with ErrNotWired; callers use this to warn
+	// at boot which items cannot be judged this run.
+	Wired() bool
 }
 
 // Parser turns a tool's raw stdout into findings for a target.
@@ -50,10 +68,13 @@ func (r *runner) ToolName() string                { return r.tool }
 func (r *runner) PinnedVersion() string           { return r.version }
 func (r *runner) OwnedCWEs() []domain.CWE         { return r.cwes }
 func (r *runner) Transport() domain.TransportKind { return r.transport }
+func (r *runner) Wired() bool                     { return r.argv != nil }
 
 func (r *runner) Check(ctx domain.ScanContext) (domain.CheckResult, error) {
-	if r.argv == nil { // stub: binary not wired yet — ran, produced nothing (Checked, no finding)
-		return domain.CheckResult{}, nil
+	if r.argv == nil {
+		// Not wired: nothing executed, so there is no verdict. Fail loudly →
+		// StatusToolFailed, never StatusChecked (see package doc).
+		return domain.CheckResult{}, fmt.Errorf("%s: %w", r.tool, ErrNotWired)
 	}
 	timeout := r.timeout
 	if timeout == 0 {

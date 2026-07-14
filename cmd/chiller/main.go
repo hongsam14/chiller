@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -121,7 +122,22 @@ func run(f flags) error {
 	if err != nil {
 		return err // boot completeness failed → exit non-zero (fail-closed)
 	}
-	log.Printf("boot gate OK: 26 KISA items covered")
+	// The gate proves every item has an OWNER — not that every owner can run.
+	// An unwired probe owns its items but executes nothing, so they are reported
+	// tool-failed (no verdict). Say so at boot: an operator must never read a
+	// report as "clean" for items no tool examined.
+	log.Printf("boot gate OK: all %d KISA items have an owner", len(spec.Items))
+	var unwired []string
+	for _, p := range probeAdapters {
+		if !p.Wired() {
+			unwired = append(unwired, p.ToolName())
+		}
+	}
+	if len(unwired) > 0 {
+		log.Printf("WARNING: %d of %d probes are NOT wired (%s). The KISA items they own "+
+			"cannot be judged and will be reported tool-failed, NOT clean. See infra-plan §3.",
+			len(unwired), len(probeAdapters), strings.Join(unwired, ", "))
+	}
 
 	// --- select store/queue backends (PR-11b: composition root is the ONLY place
 	// that picks concrete seam impls). mem is the default; mongo/valkey are the
