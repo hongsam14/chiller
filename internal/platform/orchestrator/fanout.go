@@ -3,8 +3,8 @@ package orchestrator
 import (
 	"fmt"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/ingest"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/ingest"
 )
 
 // fanOut turns a validated URLSet into WorkItems (PR-3). Two scopes:

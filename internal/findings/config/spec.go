@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 	"gopkg.in/yaml.v3"
 )
 

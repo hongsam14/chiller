@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 // Indicative CWE assignments (one per observation item). Authoritative rows are

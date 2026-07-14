@@ -4,8 +4,8 @@
 package normalize
 
 import (
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/severity"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/severity"
 )
 
 // RawFinding is what a scan adapter produces after parsing its tool's output —

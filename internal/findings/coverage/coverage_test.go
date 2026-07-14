@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/findings/config"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/config"
 )
 
 // A tiny world: 4 KISA items. PS-1/PS-2 via CWE ownership, PS-3 via attacker

@@ -3,7 +3,7 @@
 // does not derive its own identity/severity logic.
 package dedup
 
-import "github.com/enki-offen/chiller/internal/domain"
+import "github.com/hongsam14/chiller/internal/domain"
 
 // Deduplicator is the seam (NFR-01).
 type Deduplicator interface {

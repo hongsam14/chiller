@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 func TestMem_CountsPartitionFinishedItems(t *testing.T) {

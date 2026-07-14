@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/platform"
-	"github.com/enki-offen/chiller/internal/platform/workqueue"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/platform"
+	"github.com/hongsam14/chiller/internal/platform/workqueue"
 )
 
 // runWorkQueueContract is the implementation-independent behavioral suite for

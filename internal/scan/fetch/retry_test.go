@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/safety"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/safety"
 )
 
 // flakyRT fails the first `fails` round trips with a recoverable network error,

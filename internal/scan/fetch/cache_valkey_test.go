@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/enki-offen/chiller/internal/crypto"
-	"github.com/enki-offen/chiller/internal/domain"
-	"github.com/enki-offen/chiller/internal/scan/fetch"
+	"github.com/hongsam14/chiller/internal/crypto"
+	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/fetch"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"

@@ -8,7 +8,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 // FindingsStore is the persistence seam (NFR-01, NFR-04 swappable).

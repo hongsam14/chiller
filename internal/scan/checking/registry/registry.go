@@ -2,7 +2,7 @@
 // the CWEOwnership map that findings' CoverageAccountant consumes at boot.
 package registry
 
-import "github.com/enki-offen/chiller/internal/domain"
+import "github.com/hongsam14/chiller/internal/domain"
 
 // owned is implemented by checkers that can declare their CWEs (observation
 // signature-checkers and probe adapters). The registry uses it to build

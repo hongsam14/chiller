@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 const mappingYAML = `

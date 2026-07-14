@@ -8,12 +8,12 @@ package integration
 import (
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
-	fconfig "github.com/enki-offen/chiller/internal/findings/config"
-	fcoverage "github.com/enki-offen/chiller/internal/findings/coverage"
-	"github.com/enki-offen/chiller/internal/scan/checking/observation"
-	"github.com/enki-offen/chiller/internal/scan/checking/probe"
-	"github.com/enki-offen/chiller/internal/scan/checking/registry"
+	"github.com/hongsam14/chiller/internal/domain"
+	fconfig "github.com/hongsam14/chiller/internal/findings/config"
+	fcoverage "github.com/hongsam14/chiller/internal/findings/coverage"
+	"github.com/hongsam14/chiller/internal/scan/checking/observation"
+	"github.com/hongsam14/chiller/internal/scan/checking/probe"
+	"github.com/hongsam14/chiller/internal/scan/checking/registry"
 )
 
 func TestCoverageWiring_RealConfig_BootPasses(t *testing.T) {

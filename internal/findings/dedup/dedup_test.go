@@ -6,7 +6,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/enki-offen/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/domain"
 )
 
 func f(cwe domain.CWE, url, tool string, sev domain.Severity, snip string) domain.Finding {

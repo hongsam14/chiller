@@ -19,17 +19,17 @@ linters:
             - "**/internal/scan/**"
             - "**/internal/findings/**"
           deny:
-            - pkg: "github.com/enki-offen/chiller/internal/platform"
+            - pkg: "github.com/hongsam14/chiller/internal/platform"
               desc: "data plane must not depend on control plane (NFR-02)"
         domain-kernel:
           files:
             - "**/internal/domain/**"
           deny:
-            - pkg: "github.com/enki-offen/chiller/internal/platform"
+            - pkg: "github.com/hongsam14/chiller/internal/platform"
               desc: "domain kernel must import no unit (NFR-02, acyclic)"
-            - pkg: "github.com/enki-offen/chiller/internal/scan"
+            - pkg: "github.com/hongsam14/chiller/internal/scan"
               desc: "domain kernel must import no unit (NFR-02, acyclic)"
-            - pkg: "github.com/enki-offen/chiller/internal/findings"
+            - pkg: "github.com/hongsam14/chiller/internal/findings"
               desc: "domain kernel must import no unit (NFR-02, acyclic)"
 
   exclusions:
