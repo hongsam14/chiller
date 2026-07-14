@@ -15,8 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"time"
 
 	"github.com/hongsam14/chiller/internal/domain"
@@ -98,15 +96,11 @@ func (r *runner) Check(ctx domain.ScanContext) (domain.CheckResult, error) {
 	return domain.CheckResult{Findings: findings}, nil
 }
 
-// defaultExec runs the CLI, appending any proxy env (financial mode) to the
-// inherited environment. An empty env is a no-op — the tool runs direct.
-func defaultExec(ctx context.Context, name string, env []string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
-	}
-	return cmd.Output()
-}
+// defaultExec is defined per-platform (exec_linux.go / exec_other.go): on Linux
+// it runs the CLI in its own process group and kills the whole group on
+// timeout/cancel (NFR-P1, no zombie/orphan children); elsewhere it falls back to
+// the plain context-kill. Both append any proxy env (financial mode) to the
+// inherited environment; an empty env is a no-op — the tool runs direct.
 
 // ConfigureProxy routes every ProxyEligible adapter's subprocess through the
 // authenticated auth-proxy in financial mode by injecting HTTP(S)_PROXY into its
