@@ -47,7 +47,8 @@ Q8=B propose IR+COE.
 - **D2**: 세션 설계 = "능동 전제"가 아니라 **로그인 뒤 표면 커버리지 전제(능동·수동 공통)**. 능동 5개 중 세션 쓰는 건 dirhunt·Corsy 2개뿐(testssl/changeme/subzy는 세션 무관). 세션이 진짜 살리는 건 인증 수동검사 + JS캡처 API 트래픽(스코프 본체).
 - 스코프 정합 항목 17개(observation 10+humble 5+httpx 2) + 캡처 인프라 전부 IN. 능동 유지하되 익스플로잇/퍼징은 스코프 라인.
 
-## Active Increment (2026-07-14) — Probe CLI 배선 (r7) — ✅ CONSTRUCTION 완료, Operations 도달
+## ✅ CLOSED Increment (2026-07-14) — Probe CLI 배선 (r7) — Docker 검증·PR #11
+PR #11 (feat/probe-wiring). 커밋 3fe8e63(배선)·d2ca0ac(Docker 교정)·2e18e79(UI coverage). **다음 증분 후보: #0d(취약 대상 파서 실측) · §2 금융 세션(JS 토큰→무거운 설계) · §3(FindingsStore/ResponseCache→durable, 일부 완료) · §5(OTel/OIDC) · §4(PlaywrightDiscoverer).**
 Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP PRIORITY). **결과: 6/7 배선**(humble·httpx·Corsy·testssl·dirhunt·subzy), changeme(PS-019) 잠정 미배선(F5). 실행 시 최대 21/26 판정. **모든 AI-DLC 단계 승인 완료** + **실 Docker 검증 완료**(2026-07-14): 이미지 빌드 후 **6/6 probe가 이미지 내부에서 실 바이너리로 실행·파싱 clean 통과**(URL humble/httpx/corsy; Host testssl/dirhunt/subzy). 첫 실행이 F6를 현실화 — 파일출력 계약·툴 패키징(humble/Corsy=git, subzy=LukaSikic)·deps(hexdump/dig)·타임아웃·dirhunt 기존파일 버그·subzy HOME 전부 교정. production-readiness **#0a/#0b/#0c → DONE**. 커밋 3fe8e63(배선)+d2ca0ac(Docker 교정). **잔여 #0d(정직)**: positive-finding 스키마 미검증 — benign 대상은 empty/clean, humble 파서는 실 섹션기반 스키마와 달라 finding 미추출 → 취약 대상으로 파서/골든 실측 재작성 필요.
 - **Requirements Analysis** — `inception/requirements/requirements-probe.md` **approved 2026-07-14** ("Approve & Continue"). Q1=A(전부 7개)·Q2=B(멀티스테이지 툴 이미지, non-distroless)·Q3=A(생태계 관용 pin)·Q4=C(유닛+통합 exec 검증, 좀비 방지)·Q5=A(JSON+골든)·Q6=A(tool-failed 불변).
 - Implications: SECURITY-09(distroless) **amended** → NFR-P4 하드닝 리스크 수용(문서화). NFR-P1 서브프로세스 프로세스그룹 kill(좀비 방지).

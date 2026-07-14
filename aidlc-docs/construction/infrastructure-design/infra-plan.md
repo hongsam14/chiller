@@ -215,10 +215,11 @@ Acceptance: discovers dynamically-injected first-party JS the static parser miss
 > `tool-failed` (no verdict) — correct and honest as of 2026-07-13, but it means
 > the scanner is *half a scanner*. Nothing else on this list changes that.
 
-1. **Probe binaries + real parsers (§3)** — **TOP PRIORITY.** Turns 12 of the 26 items from
-   "no verdict" into actual judgements. This is the single biggest gap between chiller and
-   its stated mission. Everything below is infrastructure around an engine that is still
-   only judging 10 items.
+1. **Probe binaries + real parsers (§3)** — ✅ **DONE 6/7 (2026-07-14, increment r7)**, Docker-validated.
+   humble·httpx·Corsy·testssl·dirhunt·subzy wired + bundled + run clean in-image; changeme (PS-019)
+   deferred (F5). On a real run chiller now judges up to 21/26. **Remaining: #0d — positive-finding
+   parser schemas are unverified (benign targets return empty/clean; humble's parser needs a
+   section-based rewrite). Validate/fix against real weak targets.** See production-readiness #0a-d.
 2. **WorkQueue→Redis** + **TaskStore→Mongo** (§1 #1–2) — ✅ **DONE** (2026-07-11).
 3. **FindingsStore→Mongo** + **ResponseCache→Valkey** (§1 #6, #5) — persistence + cross-process cache, at-rest encryption.
 4. **Financial HTTPS/MITM hardening + LoginKeeper integration** (§2) — required for real financial-sector runs.
