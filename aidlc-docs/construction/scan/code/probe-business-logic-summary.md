@@ -32,5 +32,21 @@
 - **Dockerfile 툴 버전 핀·패키징**(httpx@v1.6.10·subzy@v1.1.0·testssl v3.2.1·humble==1.30·dirhunt==0.9.0·Corsy@SHA, base digest)도 **첫 이미지 빌드에서 확정**. 존재하지 않는 버전이면 조정하되 **언핀 금지**.
 - financial 프록시 env 존중(G1)은 이 증분 범위 밖(직결 기본). 인증 표면 라우팅은 §2.
 
+## 🔬 실 Docker 검증 (2026-07-14) — #0a 완료, 손작성 추측 대거 교정
+이미지를 실제로 빌드해 6개 wired probe를 **실 바이너리로 이미지 내부에서 실행**했다(`probe-integration`). 첫 실행이 F6 리스크를 그대로 현실화 — 손작성 argv/파서 I/O 모델이 크게 틀렸고, 아래를 교정했다. **최종: 6/6 probe가 이미지 내부에서 실행·파싱 clean 통과**(URL: humble·httpx·corsy / Host: testssl·dirhunt·subzy vs example.com).
+
+**교정 내역 (실 실행이 잡아낸 것):**
+- **핀/경로**: `humble`·`Corsy`는 PyPI 미배포(git 스크립트) — `pip install humble`는 무관한 패키지였음 → git clone+wrapper. `subzy` 모듈 경로는 `LukaSikic/subzy`(PentestPad 아님). testssl 클론을 go-build 스테이지로.
+- **파일 출력 계약(핵심)**: httpx만 stdout JSONL. **나머지 5개(humble/subzy/testssl/dirhunt/corsy)는 JSON을 파일에 쓰고 stdout엔 배너/진행을 섞는다.** stdout-only 파서 계약이 안 맞아 → 러너에 `outArg`(임시 디렉터리+파일 읽기) 추가, 5개를 파일 출력으로 전환. humble은 `-op <dir> -of <name>` 분리 필요.
+- **런타임 의존성**: testssl은 `hexdump`(bsdextrautils)+DNS도구(`dig`/dnsutils) 필요 → 이미지에 추가.
+- **타임아웃/제약**: dirhunt는 검색엔진 조회로 hang → `--exclude-sources`(전 소스)+`--max-depth 1`+`--timeout`으로 대상-국소화; testssl full 스캔 >180s → `--fast --protocols --standard`(12초). 크롤러/TLS에 per-tool 180s 타임아웃.
+- **기존 파일 버그**: dirhunt는 `--to-file`가 **이미 존재하면** JSON으로 읽으려다 실패 → 러너가 파일을 미리 만들지 않고 임시 디렉터리 내 미생성 경로 전달.
+
+**⚠️ 아직 미검증 (정직) — positive-finding 스키마 추출:**
+- benign 대상(example.com)에선 이 툴들이 **빈 출력 → clean(Checked)**. 즉 검증된 것은 "**실행+파싱이 깨지지 않음 → tool-failed 탈출**"까지다.
+- **각 파서의 positive-finding JSON 스키마는 여전히 손작성/미검증**이며, 실 실행으로 **humble의 실제 스키마는 섹션 기반(`"[0. Info]"`, `"[1. Missing HTTP Security Headers]"`)으로 내 `{missing,cookies}` 추측과 완전히 다름**이 드러났다 → **현 humbleParse는 실 출력에서 finding을 못 뽑는다(항상 clean)**. 나머지도 취약 대상 없이는 positive 스키마 미검증.
+- **후속 필수**: 취약 대상(약한 TLS·dir 리스팅·CORS·서브도메인 dangling)으로 각 툴의 실 positive JSON을 캡처해 파서/골든을 실측 재작성. 특히 humble 파서는 섹션 기반으로 재작성 필요.
+- **배포 주의**: subzy는 첫 실행 시 fingerprints를 `$HOME`에 내려받음 → read-only 루트 FS 배포에서 `HOME=/scratch`(또는 빌드시 프리베이크) 필요(#0c).
+
 ## 인터페이스 불변 (PR-11)
 `Adapter`/`Checker` 시그니처 불변. 변경은 `argv` non-nil화 + 파서 부착뿐. 외부 계약 무변경.

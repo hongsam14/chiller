@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 
 	"github.com/hongsam14/chiller/internal/domain"
@@ -107,8 +108,9 @@ func hasVersion(s string) bool {
 }
 
 // ---- subzy (Host, PS-025 · NoCanonicalCWE subdomain takeover) ----
-func subzyArgv(t domain.Target) []string {
-	return []string{"run", "--target", t.Host, "--output", "json", "--hide_fails"}
+// subzy writes JSON to --output <FILE> (not stdout); stdout carries banner text.
+func subzyOutArg(t domain.Target, outPath string) []string {
+	return []string{"run", "--target", t.Host, "--output", outPath, "--hide_fails"}
 }
 
 type subzyEntry struct {
@@ -137,11 +139,11 @@ func subzyParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 }
 
 // ---- testssl.sh (Host, PS-002 · CWE-1327 weak TLS) ----
-// --jsonfile /dev/stdout streams the JSON array to stdout (F1: the parser
-// contract is stdout-only). --openssl points at the bundled static openssl.
-func testsslArgv(t domain.Target) []string {
+// --jsonfile writes the JSON array to a FILE (stdout carries the human report).
+// --openssl points at the bundled static openssl (IQ3=B).
+func testsslOutArg(t domain.Target, outPath string) []string {
 	return []string{
-		"--jsonfile", "/dev/stdout", "--quiet",
+		"--jsonfile", outPath, "--quiet", "--fast", "--protocols", "--standard",
 		"--openssl=/opt/testssl/bin/openssl.Linux.x86_64",
 		t.Host + ":443",
 	}
@@ -177,8 +179,15 @@ func testsslParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 }
 
 // ---- humble (URL, PS-001/015/016/017/024 · header/cookie CWEs) ----
-func humbleArgv(t domain.Target) []string {
-	return []string{"-u", t.URL, "-o", "json"}
+// humble (rfc-st/humble) exports with -o json -of <FILE>. Its real schema is
+// richer than the fields parsed below; unknown keys are ignored, so a benign
+// target simply yields no findings (F4/F6 — positive-finding schema stays
+// golden-fixture-only until a real weak target is available).
+func humbleOutArg(t domain.Target, outPath string) []string {
+	// humble splits output into -op <dir> + -of <filename>; a full path in -of
+	// alone hits a permission error. Feeding dir+base of the runner's temp path
+	// makes humble write exactly to outPath.
+	return []string{"-u", t.URL, "-o", "json", "-op", filepath.Dir(outPath), "-of", filepath.Base(outPath)}
 }
 
 type humbleReport struct {
@@ -226,8 +235,19 @@ func humbleParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 }
 
 // ---- dirhunt (Host, PS-004 · CWE-548 directory listing) ----
-func dirhuntArgv(t domain.Target) []string {
-	return []string{t.Scheme + "://" + t.Host, "--json"}
+// dirhunt writes its JSON report to --to-file <FILE>; stdout is a live console.
+// Bounded to the target itself: without --exclude-sources it queries Google/
+// CommonCrawl/etc. and effectively hangs (the first in-image run timed out at
+// 180s). We keep it a shallow, self-contained passive crawl.
+func dirhuntOutArg(t domain.Target, outPath string) []string {
+	return []string{
+		t.Scheme + "://" + t.Host,
+		"--to-file", outPath,
+		"--exclude-sources", "robots,virustotal,google,commoncrawl,crtsh,certificatessl,wayback",
+		"--not-follow-subdomains",
+		"--max-depth", "1",
+		"--timeout", "15",
+	}
 }
 
 type dirhuntReport struct {
@@ -265,8 +285,9 @@ func dirhuntParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 }
 
 // ---- Corsy (URL, PS-021 · CWE-346 permissive CORS) ----
-func corsyArgv(t domain.Target) []string {
-	return []string{"-u", t.URL, "-j"}
+// Corsy writes JSON to -o <FILE> (stdout carries the banner); -q suppresses tips.
+func corsyOutArg(t domain.Target, outPath string) []string {
+	return []string{"-u", t.URL, "-o", outPath, "-q"}
 }
 
 type corsyReport struct {

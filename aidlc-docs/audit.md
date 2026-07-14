@@ -1023,3 +1023,11 @@ VERIFIED: build/vet/gofmt/arch-check OK, `go test ./...` pass, `-race` clean.
 **Context**: OPERATIONS (probe increment). Placeholder reached; production-readiness updated.
 
 ---
+
+## Operations — in-image Docker validation of probes (#0a–#0d)
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "docker에서 실 이미지로 돌려봐"
+**AI Response**: Built the real image and ran all 6 wired probes with real binaries in-image (probe-integration). The first run realized the F6 risk and corrected the hand-authored guesses: (pins/paths) humble+Corsy are git scripts not PyPI, subzy module path is LukaSikic/subzy; (I/O model — the big one) only httpx is stdout, the other 5 write JSON to a file and pollute stdout → added runner outArg (temp-dir + read file), humble needs -op/-of split; (deps) testssl needs hexdump (bsdextrautils) + dig (dnsutils); (timeouts/constraints) dirhunt hangs querying search engines → --exclude-sources all + bounded, testssl full scan >180s → --fast --protocols --standard (12s), 180s per-tool timeout for crawlers; (bug) dirhunt fails if --to-file exists → runner uses an un-created path in a temp dir; (deploy) subzy caches to $HOME → ENV HOME=/scratch + worker fsGroup:10001, validated under docker run --read-only --tmpfs /scratch. RESULT: 6/6 probes execute + parse clean in-image (URL humble/httpx/corsy; Host testssl/dirhunt/subzy vs example.com). production-readiness #0a/#0b/#0c → DONE; added #0d (positive-finding parser schemas still unverified — benign targets return empty/clean; humble's real schema is section-based and its parser needs a rewrite; needs real weak targets). Local re-verified: build/vet(+integration)/gofmt/arch-check/`go test -race`/gosec 0. Docs updated (probe-business-logic-summary §Docker validation, production-readiness).
+**Context**: OPERATIONS (probe increment) — real Docker validation; honest remaining gap = positive-finding extraction (#0d).
+
+---
