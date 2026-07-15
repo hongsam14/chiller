@@ -1,5 +1,5 @@
 {
-    "http://juiceshop:3000/": {
+    "http://vulnweb/": {
         "class": "wildcard value",
         "description": "This host allows requests made from any origin. However, browsers will block all requests to this host by default.",
         "severity": "low",

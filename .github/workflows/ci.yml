@@ -21,6 +21,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Opt-in (IQ2=A): the vuln-target fixture positive suite is heavy (stands up the
+  # fixture, scans public badssl) — run it on demand, not on every push.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -172,3 +175,52 @@ jobs:
           name: sbom
           path: sbom.cyclonedx.json
           if-no-files-found: warn
+
+  # Opt-in positive-finding proof (IQ2=A, #0d r9): stand up the committed
+  # vuln-target fixture and prove the host-scoped probes extract a REAL finding —
+  # dirhunt (autoindex → CWE-548), subzy (takeover fingerprint → NoCanonicalCWE),
+  # testssl (rc4.badssl.com weak TLS → CWE-1327). Only runs on manual dispatch:
+  # it depends on the public badssl service and is heavier than the always-on
+  # gates. The base `probe-integration` job already runs these same tests, but
+  # their per-probe env is unset there so each positive check skips (CI green).
+  probe-fixture-positive:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+
+      - name: build probe image (tools bundled)
+        run: docker build -t chiller:ci .
+
+      - name: compile integration test binary (static)
+        run: CGO_ENABLED=0 go test -c -tags integration -o /tmp/probe.test ./internal/scan/checking/probe/
+
+      - name: stand up the vuln-target fixture
+        run: docker compose -f test/fixtures/vuln-target/docker-compose.yml up -d --wait
+
+      - name: fetch subzy fingerprints DB (subzy self-fetch URL is dead)
+        run: |
+          curl -fsSL -o /tmp/fingerprints.json \
+            https://raw.githubusercontent.com/EdOverflow/can-i-take-over-xyz/master/fingerprints.json
+
+      - name: prove positive findings in-image on the fixture network
+        # Join the fixture's vulnnet (reaches vulnweb/takeover-mock by name) — it
+        # also has egress, so testssl can reach badssl. Mount the fingerprints DB
+        # at subzy's HOME path. --init reaps probe subprocesses (PID 1).
+        run: |
+          docker run --rm --init --network chiller-vuln-target_vulnnet \
+            --entrypoint /probe.test \
+            -v /tmp/probe.test:/probe.test:ro \
+            -v /tmp/fingerprints.json:/scratch/subzy/fingerprints.json:ro \
+            -e PROBE_FIXTURE_DIRHUNT=vulnweb \
+            -e PROBE_FIXTURE_SUBZY=takeover-mock \
+            -e PROBE_BADSSL_HOST=rc4.badssl.com \
+            chiller:ci -test.v -test.run 'TestIntegration_(URLProbes|FixtureProbes)'
+
+      - name: tear down fixture
+        if: always()
+        run: docker compose -f test/fixtures/vuln-target/docker-compose.yml down -v

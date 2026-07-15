@@ -1,0 +1,3 @@
+-- observation dormant (PS-012): a backup-named artifact. DUMMY content.
+-- No real data. Seeded surface for the future well-known/backup provider.
+CREATE TABLE dummy (id INT);

@@ -1,1 +1,9 @@
-[{"subdomain":"dangling.a.test","engine":"GitHub Pages","vulnerable":true},{"subdomain":"ok.a.test","engine":"","vulnerable":false}]
+[
+  {
+    "subdomain": "takeover-mock",
+    "status": "vulnerable",
+    "engine": "",
+    "documentation": "",
+    "discussion": ""
+  }
+]

@@ -1,9 +1,9 @@
 {
     "[0. Info]": {
         "Generator": "https://github.com/rfc-st/humble | v.2026-07-13",
-        "Date": "2026/07/15 - 02:29:41",
-        "URL": "http://juiceshop:3000/",
-        "File": "/scratch/h.json",
+        "Date": "2026/07/15 - 12:53:22",
+        "URL": "http://vulnweb/",
+        "File": "/out/humble.json",
         "Note": "The history file, analysis_h.txt, could not be accessed (Permission denied)"
     },
     "[1. Enabled HTTP Security Headers]": [
@@ -12,27 +12,22 @@
             "Value": "*"
         },
         {
-            "Header": "Cache-Control",
-            "Value": "public, max-age=0"
-        },
-        {
             "Header": "Content-Type",
-            "Value": "text/html; charset=UTF-8"
+            "Value": "text/html"
         },
         {
-            "Header": "Feature-Policy",
-            "Value": "payment 'self'"
-        },
-        {
-            "Header": "X-Content-Type-Options",
-            "Value": "nosniff"
-        },
-        {
-            "Header": "X-Frame-Options",
-            "Value": "SAMEORIGIN"
+            "Header": "Set-Cookie",
+            "Value": "sid=abc123def4567890abcdef1234567890; Path=/"
         }
     ],
     "[2. Missing HTTP Security Headers]": [
+        {
+            "Header": "Cache-Control",
+            "Details": "Directives for caching in both requests and responses.",
+            "References": [
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control"
+            ]
+        },
         {
             "Header": "Clear-Site-Data",
             "Details": "Clears browsing data (cookies, storage, cache) associated with the requesting website.",
@@ -104,14 +99,33 @@
             ]
         },
         {
+            "Header": "X-Content-Type-Options",
+            "Details": "Indicate that MIME types in the \"Content-Type\" headers should be followed.",
+            "References": [
+                "https://mdn.io/X-Content-Type-Options"
+            ]
+        },
+        {
             "Header": "X-Permitted-Cross-Domain-Policies",
             "Details": "Limit which data external resources (e.g. Adobe Flash/PDF documents), can access on the domain.",
             "References": [
                 "https://github.com/OWASP/www-project-secure-headers/blob/master/mainsite/01_headers.md"
             ]
+        },
+        {
+            "Header": "X-Frame-Options",
+            "Details": "Prevents clickjacking attacks, limiting sources of embedded content.",
+            "References": [
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options"
+            ]
         }
     ],
-    "[3. Fingerprint HTTP Response Headers]": [],
+    "[3. Fingerprint HTTP Response Headers]": [
+        {
+            "Header": "Server (Generic HTTP Server/Content Delivery Network)",
+            "Value": "nginx/1.27.5"
+        }
+    ],
     "[4. Deprecated HTTP Response Headers/Protocols and Insecure Values]": [
         {
             "Issue": "Access-Control-Allow-Origin (Unsafe Values)",
@@ -123,43 +137,24 @@
             ]
         },
         {
-            "Issue": "Cache-Control (Recommended Values)",
+            "Issue": "Content-Type (Unsafe Value)",
             "Details": [
-                "Enable 'no-cache' and 'no-store' if there are sensitive data in the URL analyzed."
+                "The 'charset' attribute is necessary to prevent XSS in HTML pages."
             ],
             "References": [
-                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control"
+                "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html"
             ]
         },
         {
             "Issue": "Etag (Potentially Unsafe Header)",
             "Details": [
-                "Although unlikely to be exploited, this header should not include inode information."
-            ],
-            "References": [
-                "https://www.pentestpartners.com/security-blog/vulnerabilities-that-arent-etag-headers/"
-            ]
-        },
-        {
-            "Issue": "Feature-Policy (Deprecated Header)",
-            "Details": [
-                "\"Feature-Policy\" has been renamed to \"Permissions-Policy\".",
+                "Although unlikely to be exploited, this header should not include inode information.",
                 "HTTP (URL Via Unsafe Scheme)",
                 "You are analyzing a domain via HTTP, in which the communications are not encrypted."
             ],
             "References": [
-                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Permissions-Policy",
+                "https://www.pentestpartners.com/security-blog/vulnerabilities-that-arent-etag-headers/",
                 "https://www.cloudflare.com/learning/ssl/why-is-http-not-secure/"
-            ]
-        },
-        {
-            "Issue": "Vary (Potentially Unsafe Header)",
-            "Details": [
-                "The values of this header may expose others, facilitating attacks if user input is accepted."
-            ],
-            "References": [
-                "https://www.yeswehack.com/fr/learn-bug-bounty/http-header-exploitation",
-                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Vary"
             ]
         }
     ],
@@ -169,10 +164,6 @@
     },
     "[6. Browser Compatibility for Enabled HTTP Security Headers]": [
         {
-            "Header": "Cache-Control",
-            "Reference": "https://caniuse.com/?search=Cache-Control"
-        },
-        {
             "Header": "Content-Type",
             "Reference": "https://caniuse.com/?search=Content-Type"
         },
@@ -181,30 +172,18 @@
             "Reference": "https://caniuse.com/?search=ETag"
         },
         {
-            "Header": "Feature-Policy",
-            "Reference": "https://caniuse.com/?search=Feature-Policy"
-        },
-        {
-            "Header": "Vary",
-            "Reference": "https://caniuse.com/?search=Vary"
-        },
-        {
-            "Header": "X-Content-Type-Options",
-            "Reference": "https://caniuse.com/?search=X-Content-Type-Options"
-        },
-        {
-            "Header": "X-Frame-Options",
-            "Reference": "https://caniuse.com/?search=X-Frame-Options"
+            "Header": "Set-Cookie",
+            "Reference": "https://caniuse.com/?search=Set-Cookie"
         }
     ],
     "[7. Analysis Results]": {
         "Duration": "Done in 0.01 seconds! (changes with respect to the last analysis in parentheses)",
-        "Enabled headers": "6 (Not available)",
-        "Missing headers": "11 (Not available)",
-        "Fingerprint headers": "0 (Not available)",
-        "Deprecated/Insecure headers": "6 (Not available)",
+        "Enabled headers": "3 (Not available)",
+        "Missing headers": "14 (Not available)",
+        "Fingerprint headers": "1 (Not available)",
+        "Deprecated/Insecure headers": "4 (Not available)",
         "Empty headers": "0 (Not available)",
-        "Findings to review": "17 (Not available)",
+        "Findings to review": "19 (Not available)",
         "Analysis Grade": "D (Review 'Deprecated/Insecure headers')",
         "'(*)' meaning": "Experimental HTTP response directive or header",
         "'(*)' ref": "https://mdn.io/Experimental_deprecated_obsolete",
