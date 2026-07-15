@@ -11,12 +11,13 @@
 version: "kisa-2026-07-08"
 
 map:
-  # --- Probe: humble (headers/cookies) ---
+  # --- Probe: humble (response security headers only) ---
   CWE-319:  { KISA: [PS-001] }          # HSTS / cleartext transport
+  CWE-1021: { KISA: [PS-024] }          # clickjacking (frame options)
+  # --- Observation: Set-Cookie flags (moved from humble, #0d) ---
   CWE-614:  { KISA: [PS-015] }          # cookie without Secure
   CWE-1004: { KISA: [PS-016] }          # cookie without HttpOnly
   CWE-1275: { KISA: [PS-017] }          # cookie without SameSite
-  CWE-1021: { KISA: [PS-024] }          # clickjacking (frame options)
   # --- Probe: httpx (versions), testssl, dirhunt, changeme, Corsy ---
   CWE-693:  { KISA: [PS-007, PS-020] }  # version disclosure (server + framework)
   CWE-1327: { KISA: [PS-002] }          # weak TLS

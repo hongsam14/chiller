@@ -64,5 +64,8 @@ func Default() []Signature {
 		sessionInURLSig{},     // PS-018
 		crossdomainSig{},      // PS-022
 		captchaAbsenceSig{},   // PS-023 (stub anchor)
+		cookieSecureSig{},     // PS-015 (moved from humble, #0d)
+		cookieHTTPOnlySig{},   // PS-016 (moved from humble, #0d)
+		cookieSameSiteSig{},   // PS-017 (moved from humble, #0d)
 	}
 }
