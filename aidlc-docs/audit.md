@@ -1103,3 +1103,104 @@ VERIFIED: build/vet/gofmt/arch-check OK, `go test ./...` pass, `-race` clean.
 **Context**: CONSTRUCTION Build&Test + OPERATIONS (#0d) closed via real-run verification.
 
 ---
+
+## New Increment Request — #0d remaining (testssl/dirhunt/subzy positive-finding validation)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: "#0d를 작업해서 검출 정합성을 늘리는 작업이 우선임. ai-dlc로 작업 시작하자"
+**AI Response**: Resumed AI-DLC (brownfield, existing aidlc-state.md). Loaded common rules (process-overview, session-continuity, question-format-guide, welcome-message). Workspace Detection = resume. Prior #0d increment (r8) validated humble/httpx/Corsy positive schemas against Juice Shop + kblife-clone.com; the remaining deferral is testssl (PS-002/CWE-1327 weak TLS), dirhunt (PS-004/CWE-548 dir listing), subzy (PS-025 subdomain takeover) — their positive-finding schemas are unmeasured because a benign local http target lacks weak-TLS / dir-listing / dangling-subdomain surfaces. Entering Requirements Analysis: created target-selection question file (Korean) to decide which vulnerable targets to validate each parser against.
+**Context**: INCEPTION - Workspace Detection (resume) + Requirements Analysis start (#0d remaining, r9).
+
+---
+
+## Requirements Answers — detection-fidelity target selection (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: "답변 완료" — Q1=A (badssl.com 공개 취약 서브도메인 실측), Q2=A (로컬 nginx autoindex 실측), Q3=A (mock 지문 서버로 subzy 실측), Q4=A (실 골든 + 이미지 positive 단언, r8 정직성) + 메모 "이렇게 되면 종합적인 하나의 취약점 서비스를 만드는 것도 좋을거 같은데", Q5=A (3개 모두 이번 증분).
+**AI Response**: Recorded. Detected a soft tension between Q1=A (testssl → external badssl.com) and the Q4 note proposing a single consolidated vulnerable-target service. Since this decides external-dependency vs hermetic-local fixture (and whether a reusable fixture is committed to the repo), raising a clarification round (Korean) before finalizing requirements + workflow planning.
+**Context**: INCEPTION - Requirements Analysis answers (#0d remaining, r9); clarification needed.
+
+---
+
+## Requirements Clarification Answers R1 — consolidated fixture (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: C1=B (부분 통합 — dirhunt+subzy 로컬 fixture, testssl은 badssl 유지) + 메모 "하지만 이전 단계에서 probe한 취약점들도 모두 통합하는건 어떤지?", C2=A (재사용 test-fixture 레포 커밋), C3=A (스코프 라인 유지 — fixture는 테스트 대상일 뿐).
+**AI Response**: Recorded. C2=A/C3=A locked. The C1 note materially widens scope — user wants a single hermetic fixture covering not just this increment's 3 probes but also the r8-validated HTTP probes (humble/httpx/Corsy), removing external target dependencies (Juice Shop/kblife/badssl) and giving one committed regression target. This conflicts slightly with C1=B (testssl stays external). Raising one more focused clarification (R2, Korean) to pin fixture coverage breadth (comprehensive incl. local weak-TLS for testssl vs HTTP-only + external badssl) and whether observation-signature surfaces are seeded now (they are unwired well-known-path fetches → separate backlog).
+**Context**: INCEPTION - Requirements Analysis clarification R1 (#0d remaining, r9); one more round.
+
+---
+
+## Requirements Clarification Answers R2 — fixture coverage (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: C4=B (HTTP-only 통합 — humble/httpx/Corsy/dirhunt/subzy 5개 로컬 fixture, testssl은 외부 badssl 유지), C5=B (observation 시그니처 표면도 fixture에 dormant로 미리 배치).
+**AI Response**: Recorded. No contradictions: C4=B keeps testssl external (consistent with Q1=A). Final decision set for r9 locked — fixture `test/fixtures/vuln-target/` (committed, C2=A) serves 5 HTTP probe surfaces + dormant observation surfaces (C5=B), testssl validated against external badssl (Q1=A/C4=B), subzy via mock fingerprint (Q3=A), real-golden + in-image positive assertion (Q4=A), all 3 target probes this increment (Q5=A), scope line held (C3=A: fixture is a scanned test target, no product-code vuln/active logic). Generated requirements doc `requirements-detection-fidelity.md`. Presenting Requirements Analysis approval gate.
+**Context**: INCEPTION - Requirements Analysis complete (#0d remaining, r9); approval gate.
+
+---
+
+## Requirements Analysis Approval (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Requirements Analysis 완료 — 승인 & 계속 / 변경 요청?"
+**User Input**: "(A)"
+**AI Response**: Approved. Proceeded to Workflow Planning. Created `inception/plans/execution-plan-detection-fidelity.md` (Risk=Medium). EXECUTE: Infrastructure Design (fixture topology, light) · Code Generation · Build and Test · Operations (#0d close). SKIP: Reverse/Stories/App Design/Units/Functional Design/NFR. Updated aidlc-state.md Active Increment → r9. Presenting Workflow Planning approval gate.
+**Context**: INCEPTION - Requirements approved → Workflow Planning (#0d remaining, r9).
+
+---
+
+## Workflow Planning Approval (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Workflow Planning 완료 — 승인 & 계속 / 변경 / 스킵 포함?"
+**User Input**: "(A)"
+**AI Response**: Approved. Proceeded to Infrastructure Design (light, EXECUTE). Inspected current state: testssl/dirhunt/subzy goldens are hand-authored (F6, unverified); host-probe integration only asserts no-error via PROBE_TEST_HOST; humble/httpx/Corsy already have in-process httptest positive integration. Creating vuln-fixture infrastructure-design-plan with embedded questions (Korean) on fixture container topology, integration wiring, network exposure, and subzy fingerprint strategy.
+**Context**: CONSTRUCTION - Infrastructure Design start (#0d remaining, r9).
+
+---
+
+## Infrastructure Design Answers + Artifact (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: "답변 완료" — IQ1=A (nginx 1 + mock 1 = 2 서비스), IQ2=A (하이브리드 통합: httptest 유지 + dirhunt/subzy env-gated compose), IQ3=A (호스트 미노출), IQ4=A (body-only 지문).
+**AI Response**: Generated `construction/scan/infrastructure-design/vuln-fixture-design.md`: 2-service compose (`vulnweb` nginx serving humble/httpx/Corsy/dirhunt + observation dormant surfaces; `takeover-mock` for subzy body-only fingerprint) on internal-only `vulnnet` (no host port). Hybrid integration wiring; security-baseline isolation locked. Flagged F6-style empirical unknowns for Code Gen (subzy body-only fingerprint string, real testssl/dirhunt JSON schemas, nginx version-tag). Marked infra plan steps IS-1..6 [x]. Presenting 2-option completion gate.
+**Context**: CONSTRUCTION - Infrastructure Design complete (#0d remaining, r9); approval gate.
+
+---
+
+## Infrastructure Design Approval + Code Gen Part 1 (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt (Infra approval)**: "Infrastructure Design Complete — Request Changes / Continue to Next Stage?"
+**User Input**: "Continue to Next Stage"
+**AI Response**: Infra approved. Entered Code Generation. Verified environment (Docker 29.1.1 + compose v2.40.3, Go 1.26.5; probe bins live only in image → real-measurement path = build image + compose fixture + capture goldens; badssl needs container egress → honest-defer fallback). Created Code Gen Part 1 plan `construction/plans/detection-fidelity-code-generation-plan.md` (11 steps: fixture scaffold → README → subzy fingerprint → golden capture → parser validate/correct → unit positive+PBT → hybrid integration → observation dormant doc → opt-in CI → summary → local gates). Presenting Part 1 approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 1 plan (#0d remaining, r9); approval gate.
+
+---
+
+## Code Gen Part 1 Approved → Part 2 Generation start (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Code Gen Part 1 완료 — Request Changes / Continue to Next Stage?"
+**User Input**: "Continue to Next Stage"
+**AI Response**: Part 1 approved. Starting Part 2 generation per the 11-step plan. Step 1: fixture scaffolding (compose + nginx confs + dormant static surfaces + takeover-mock).
+**Context**: CONSTRUCTION - Code Generation Part 2 (#0d remaining, r9).
+
+---
+
+## Code Gen Part 2 — detection fidelity generated + real-run verified (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Response**: Executed all 11 steps. Built the chiller probe image, stood up the committed `test/fixtures/vuln-target/` fixture, and captured REAL tool output. Real runs corrected TWO fabricated parser schemas: dirhunt (real signal `index_of_processors[].crawler_url.flags:"index_of"`, not `results[].flags:"directory-listing"`) and subzy (real signal string `status:"vulnerable"`, not boolean `vulnerable`) — both previously emitted zero findings on real vulnerable output. testssl/humble/httpx/corsy schemas confirmed correct; goldens re-captured hermetically. Added PBT-D1 (parsers_pbt_test.go), hybrid env-gated integration positives (integration_test.go), opt-in CI job (workflow_dispatch). VERIFIED in-image end-to-end (real adapter defaultExec→parser): TestIntegration_FixtureProbes_PositiveFindings all PASS — dirhunt CWE-548, subzy takeover, testssl CWE-1327 (rc4.badssl.com); URL probes humble/httpx/corsy PASS. Local gates green (build/vet+integration/gofmt/arch-check/race/gosec 0). Honesty invariant + 26-partition + ownership + interfaces + product Dockerfile all unchanged. Honest deferrals: subzy fingerprints-DB runtime provisioning (self-fetch URL dead → tool-failed without DB; parser validated), observation dormant surfaces (no finding until well-known provider wired). Docker resources cleaned up. Presenting Code Gen Part 2 approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 2 complete (#0d remaining, r9); approval gate.
+
+---
+
+## Code Gen Part 2 Approved → Build and Test (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Code Gen Part 2 완료 — Request Changes / Continue to Next Stage?"
+**User Input**: "Continue to Next Stage"
+**AI Response**: Code Gen approved. Build and Test: local gates already green (build/vet/+integration/gofmt/arch-check/race/gosec 0) and in-image end-to-end positive suite verified during generation. Recording increment build-and-test summary `construction/build-and-test/detection-fidelity-build-and-test-summary.md` with run commands + results + fixture opt-in procedure. Presenting Build and Test approval gate (→ Operations).
+**Context**: CONSTRUCTION - Build and Test (#0d remaining, r9).
+
+---
+
+## Build and Test Approved → Operations (#0d close, r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Build and test 완료. Operations로 진행?"
+**User Input**: "(A)"
+**AI Response**: Approved. Operations: updated `operations/production-readiness.md` — #0d marked DONE (all 6 probes: r8 humble/httpx/Corsy + r9 testssl/dirhunt/subzy validated with in-image positive), added row #0e (subzy fingerprints-DB runtime provisioning follow-up; parser validated, tool-failed without DB — false-clean-safe). Updated aidlc-state.md → increment CLOSED. r9 complete: all AI-DLC stages approved + real-run verified. Next candidates: #0e subzy DB bundle · observation well-known-path provider (reuses fixture dormant surfaces) · §2 financial session · §4 Playwright.
+**Context**: OPERATIONS - #0d closed (r9). Increment complete.
+
+---
