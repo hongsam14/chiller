@@ -1,6 +1,7 @@
 package observation
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hongsam14/chiller/internal/domain"
@@ -61,6 +62,12 @@ func TestCookieSigs_NoCookies_NA(t *testing.T) {
 func TestCookieSameSite_None_Flagged(t *testing.T) {
 	fs, na, err := cookieSameSiteSig{}.Judge(ctxWithCookies(domain.Cookie{Name: "sid", Secure: true, HttpOnly: true, SameSite: "None"}))
 	if err != nil || na || len(fs) != 1 {
-		t.Errorf("SameSite=None must be flagged, got fs=%v na=%v", fs, na)
+		t.Fatalf("SameSite=None must be flagged, got fs=%v na=%v", fs, na)
+	}
+	// Evidence must not claim the cookie is "without SameSite" — it is present but
+	// permissive (None). The message reflects both the missing and None cases.
+	ev := fs[0].Evidence.Snippets[0]
+	if strings.Contains(ev, "without SameSite") || !strings.Contains(ev, "missing or None") {
+		t.Errorf("SameSite=None evidence must reflect the None case, got %q", ev)
 	}
 }

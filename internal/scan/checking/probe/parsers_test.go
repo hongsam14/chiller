@@ -117,6 +117,17 @@ func TestHumbleParse_Clickjacking(t *testing.T) {
 	}
 }
 
+// The outer humble object parses, but the matched section body is schema-drifted
+// (an object where an array of header items is expected). This must surface as an
+// error (→ tool-failed), not a silent clean parse. Regression for the case where
+// humbleSection swallowed the section-body unmarshal error and returned nil.
+func TestHumbleParse_MalformedSectionBody_IsError(t *testing.T) {
+	in := []byte(`{"[2. Missing HTTP Security Headers]":{"Header":"Strict-Transport-Security"}}`)
+	if _, err := humbleParse(probeTarget, in); err == nil {
+		t.Error("schema-drifted humble section body must error (→ tool-failed), got nil")
+	}
+}
+
 func TestDirhuntParse(t *testing.T) {
 	fs, err := dirhuntParse(probeTarget, golden(t, "dirhunt.json"))
 	if err != nil {
