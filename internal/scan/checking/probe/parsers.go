@@ -15,11 +15,16 @@ import (
 // tool's owned CWE(s), so ownership → PS-ID stays unambiguous. Evidence is
 // bounded to domain.MaxEvidenceSnippets.
 //
-// HONESTY (F6): these JSON schemas are authored against each tool's documented
-// output but are UNVERIFIED against a real run until the in-image integration
-// suite executes the pinned binary (Build & Test). Golden fixtures in testdata/
-// pin the assumed schema; a schema drift is corrected there, not by loosening
-// the parser.
+// HONESTY (F6): every parser below is now VERIFIED against real tool output.
+// The golden fixtures in testdata/ are real captures — humble/httpx/Corsy from
+// the vuln-target fixture, dirhunt from an nginx autoindex, subzy from a
+// takeover-fingerprint mock, testssl from rc4.badssl.com (#0d, r9). The real
+// runs corrected two fabricated schemas: dirhunt (real signal is
+// `index_of_processors[].crawler_url.flags:"index_of"`, not
+// `results[].flags:"directory-listing"`) and subzy (real signal is the STRING
+// `status:"vulnerable"`, not a boolean `vulnerable` field) — both previously
+// could never emit a finding on real output. A schema drift is corrected here
+// against the real golden, never by loosening the parser to hide it.
 
 // pFinding builds a probe Finding: owned CWE, tool name as source, bounded evidence.
 func pFinding(cwe domain.CWE, tool, url, evidence string) domain.Finding {
@@ -113,10 +118,16 @@ func subzyOutArg(t domain.Target, outPath string) []string {
 	return []string{"run", "--target", t.Host, "--output", outPath, "--hide_fails"}
 }
 
+// Real subzy v1.1.0 --output schema (verified against a body-matched takeover):
+// a JSON array of {subdomain, status, engine, documentation, discussion}. The
+// vulnerability signal is the STRING status field ("vulnerable"), NOT a boolean
+// — the earlier hand-authored `vulnerable bool` never matched real output, so a
+// genuinely-vulnerable subdomain was silently reported clean. `engine` is often
+// empty in real output. `--hide_fails` means only flagged subdomains are written.
 type subzyEntry struct {
-	Subdomain  string `json:"subdomain"`
-	Engine     string `json:"engine"`
-	Vulnerable bool   `json:"vulnerable"`
+	Subdomain string `json:"subdomain"`
+	Status    string `json:"status"`
+	Engine    string `json:"engine"`
 }
 
 func subzyParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
@@ -130,10 +141,14 @@ func subzyParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 	}
 	var out []domain.Finding
 	for _, e := range entries {
-		if e.Vulnerable {
-			out = append(out, pFinding(domain.NoCanonicalCWE, "subzy", t.URL,
-				"subdomain takeover ("+e.Engine+"): "+e.Subdomain))
+		if !strings.EqualFold(e.Status, "vulnerable") {
+			continue
 		}
+		ev := "subdomain takeover: " + e.Subdomain
+		if e.Engine != "" {
+			ev = "subdomain takeover (" + e.Engine + "): " + e.Subdomain
+		}
+		out = append(out, pFinding(domain.NoCanonicalCWE, "subzy", t.URL, ev))
 	}
 	return out, nil
 }
@@ -275,14 +290,49 @@ func dirhuntOutArg(t domain.Target, outPath string) []string {
 	}
 }
 
+// Real dirhunt 0.9.0 --to-file schema (verified against an nginx autoindex): the
+// report has an `index_of_processors` array holding exactly the URLs dirhunt
+// classified as an "Index Of" (directory listing) via its ProcessIndexOfRequest
+// processor. Each entry's `crawler_url.flags` carries the "index_of" flag. The
+// earlier hand-authored `{results:[{url,status,flags:["directory-listing"]}]}`
+// schema was fabricated — it matched nothing real, so a listed directory was
+// silently reported clean. We key on the authoritative `index_of_processors`
+// list (and confirm the "index_of" flag for tightness).
 type dirhuntReport struct {
-	Results []dirhuntResult `json:"results"`
+	IndexOf []dirhuntEntry `json:"index_of_processors"`
 }
 
-type dirhuntResult struct {
-	URL    string   `json:"url"`
-	Status int      `json:"status"`
-	Flags  []string `json:"flags"`
+type dirhuntEntry struct {
+	CrawlerURL struct {
+		Flags []string        `json:"flags"`
+		URL   dirhuntURLField `json:"url"`
+	} `json:"crawler_url"`
+}
+
+// dirhuntURLField normalises the polymorphic `crawler_url.url` value: dirhunt
+// writes `address` as a plain string in index_of entries but as a nested
+// {address, domain} object elsewhere. We accept either so a schema quirk never
+// crashes the parse (which would flip the probe to tool-failed).
+type dirhuntURLField struct{ Address string }
+
+func (u *dirhuntURLField) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Address json.RawMessage `json:"address"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	var s string
+	if json.Unmarshal(raw.Address, &s) == nil {
+		u.Address = s
+		return nil
+	}
+	var nested struct {
+		Address string `json:"address"`
+	}
+	_ = json.Unmarshal(raw.Address, &nested)
+	u.Address = nested.Address
+	return nil
 }
 
 func dirhuntParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
@@ -295,13 +345,18 @@ func dirhuntParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 		return nil, err
 	}
 	var out []domain.Finding
-	for _, res := range r.Results {
-		for _, f := range res.Flags {
-			if strings.Contains(strings.ToLower(f), "directory-listing") || strings.Contains(strings.ToLower(f), "index-of") {
-				out = append(out, pFinding("CWE-548", "dirhunt", t.URL, "directory listing exposed: "+res.URL))
+	for _, e := range r.IndexOf {
+		listing := false
+		for _, f := range e.CrawlerURL.Flags {
+			if strings.EqualFold(f, "index_of") {
+				listing = true
 				break
 			}
 		}
+		if !listing {
+			continue
+		}
+		out = append(out, pFinding("CWE-548", "dirhunt", t.URL, "directory listing exposed: "+e.CrawlerURL.URL.Address))
 		if len(out) >= domain.MaxEvidenceSnippets {
 			break
 		}
