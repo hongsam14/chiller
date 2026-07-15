@@ -40,11 +40,15 @@ WORKDIR /app
 # ships its own static openssl, but bash is required); pipx for isolated Python
 # tool venvs (IQ2=A). ca-certificates for TLS egress.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash ca-certificates pipx bsdextrautils procps dnsutils \
+        bash ca-certificates pipx bsdextrautils procps dnsutils tini \
     && rm -rf /var/lib/apt/lists/*
 # testssl.sh needs `hexdump` (bsdextrautils) and a DNS lookup tool (`dig` from
 # dnsutils); procps provides process tools. All three were surfaced by the first
 # in-image run (testssl aborted "You need hexdump" then "Neither dig/host/... present").
+# tini is the init (PID 1): when a probe times out, its process group is SIGKILLed
+# (NFR-P1), but killed grandchildren (testssl→openssl) reparent to PID 1 — chiller
+# does not reap unknown children, so without an init they would linger as zombies.
+# tini reaps them, completing the no-zombie guarantee in the container.
 
 # Python probes. dirhunt is on PyPI (isolated venv via pipx, IQ2=A). humble
 # (rfc-st/humble) and Corsy (s0md3v/Corsy) have NO PyPI release — they are git
@@ -85,5 +89,5 @@ ENV TMPDIR=/scratch HOME=/scratch
 USER app
 
 EXPOSE 8080
-ENTRYPOINT ["/app/chiller"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/chiller"]
 CMD ["--role=all", "--addr=0.0.0.0:8080"]
