@@ -152,10 +152,15 @@ jobs:
         run: CGO_ENABLED=0 go test -c -tags integration -o /tmp/probe.test ./internal/scan/checking/probe/
 
       - name: run probe integration inside the image (real binaries)
+        # Run ONLY the //go:build integration tests in the image. The unit tests
+        # compiled into the same binary (parser goldens, exec-pgroup, missing-
+        # binary honesty) belong to the `fast` job: they need testdata/ (not in
+        # the image) and assume NO tool binaries are present — both false here.
+        # --init gives the test binary a real PID 1 that reaps subprocesses.
         run: |
-          docker run --rm --entrypoint /probe.test \
+          docker run --rm --init --entrypoint /probe.test \
             -v /tmp/probe.test:/probe.test:ro \
-            chiller:ci -test.v
+            chiller:ci -test.v -test.run TestIntegration
 
       - name: SBOM
         continue-on-error: true
