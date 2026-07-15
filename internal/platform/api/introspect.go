@@ -120,6 +120,11 @@ const dashboardHTML = `<!doctype html>
   th, td { text-align: left; padding: 0.3rem 0.6rem; border-bottom: 1px solid gray; font-size: 0.9rem; }
   .muted { opacity: 0.6; }
   #scanOut { white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
+  .st-checked { color: #1a7f37; font-weight: 600; }
+  .st-tool_failed { color: #b35900; font-weight: 600; }
+  .st-delegated { color: #6e7781; }
+  .st-not_applicable { opacity: 0.6; }
+  #covSummary { font-size: 0.85rem; margin: 0.4rem 0; }
 </style>
 </head>
 <body>
@@ -145,6 +150,9 @@ const dashboardHTML = `<!doctype html>
   <input id="scanId" placeholder="scan id" size="32">
   <button id="lookup">Look up</button>
 </div>
+<div id="covSummary" class="muted"></div>
+<table id="covTable" style="display:none"><thead><tr><th>PS item</th><th>status</th></tr></thead><tbody id="coverage"></tbody></table>
+<h3 style="font-size:0.9rem;margin:0.6rem 0 0.2rem">raw status</h3>
 <div id="scanOut" class="muted">enter a scan id</div>
 <script>
 (function () {
@@ -189,14 +197,47 @@ const dashboardHTML = `<!doctype html>
   document.getElementById("go").addEventListener("click", function () {
     tok = document.getElementById("tok").value; refresh();
   });
+  function renderCoverage(rep) {
+    var sum = document.getElementById("covSummary");
+    var tb = document.getElementById("coverage"); tb.textContent = "";
+    var tbl = document.getElementById("covTable");
+    if (!rep || rep._running) { sum.textContent = "report not ready — scan still running"; tbl.style.display = "none"; return; }
+    if (rep._err) { sum.textContent = "report unavailable (" + rep._err + ")"; tbl.style.display = "none"; return; }
+    var cov = rep.Coverage || rep.coverage || {};
+    var ids = Object.keys(cov).sort();
+    var counts = {};
+    ids.forEach(function (k) {
+      var rec = cov[k] || {};
+      var st = rec.status || rec.Status || "?";
+      counts[st] = (counts[st] || 0) + 1;
+      var tr = document.createElement("tr");
+      var a = document.createElement("td"); a.textContent = k;
+      var b = document.createElement("td"); b.textContent = st + (rec.target ? " → " + rec.target : "");
+      b.className = "st-" + st;
+      tr.appendChild(a); tr.appendChild(b); tb.appendChild(tr);
+    });
+    var findings = (rep.Findings || rep.findings || []).length;
+    sum.textContent = ids.length + " items — checked " + (counts.checked || 0) +
+      " · tool_failed " + (counts.tool_failed || 0) + " · delegated " + (counts.delegated || 0) +
+      " · n/a " + (counts.not_applicable || 0) + " · findings " + findings;
+    tbl.style.display = ids.length ? "" : "none";
+  }
   document.getElementById("lookup").addEventListener("click", function () {
-    var id = document.getElementById("scanId").value;
+    var id = document.getElementById("scanId").value.trim();
     if (!id) return;
-    fetch("/scans/" + encodeURIComponent(id), { headers: hdr() }).then(function (r) {
+    var h = hdr();
+    // live progress (status) — always available while running or done
+    fetch("/scans/" + encodeURIComponent(id), { headers: h }).then(function (r) {
       return r.json();
     }).then(function (d) {
       document.getElementById("scanOut").textContent = JSON.stringify(d, null, 2);
     }).catch(function () { document.getElementById("scanOut").textContent = "error"; });
+    // 26-item coverage (report) — 202 while running, 200 when complete
+    fetch("/scans/" + encodeURIComponent(id) + "/report", { headers: h }).then(function (r) {
+      if (r.status === 202) return { _running: true };
+      if (r.status !== 200) return { _err: r.status };
+      return r.json();
+    }).then(renderCoverage).catch(function () { renderCoverage({ _err: "fetch" }); });
   });
   setInterval(function () { if (tok) refresh(); }, 3000);
 })();

@@ -53,6 +53,14 @@ services:
       - "--cache=valkey"
       - "--token=dev-token-change-me"
     ports: ["8080:8080"]
+    # Hardening parity with deploy/k8s (NFR-P4): read-only root FS + drop caps +
+    # no privilege escalation. Probe CLIs get an ephemeral writable /scratch
+    # (TMPDIR) since the root FS is read-only.
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    # /scratch is a writable tmpfs; TMPDIR=/scratch is already set in the image.
+    tmpfs: ["/scratch"]
 
 volumes:
   mongo-data:

@@ -130,6 +130,38 @@ jobs:
             aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
             image --severity HIGH,CRITICAL --no-progress chiller:ci
 
+  # Probe integration (Q4=C / IQ4=A): the wired probes' real os/exec + real-output
+  # parse path, exercised INSIDE the built image where the pinned tool binaries
+  # actually exist. The runtime image has no Go toolchain, so we compile a static
+  # `-tags integration` test binary on the host and run it in the image. This is
+  # the first place the hand-authored parser schemas meet real tool output (F6);
+  # a schema drift fails here. Host-scoped probes skip unless PROBE_TEST_HOST is set.
+  probe-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+
+      - name: build probe image (tools bundled)
+        run: docker build -t chiller:ci .
+
+      - name: compile integration test binary (static)
+        run: CGO_ENABLED=0 go test -c -tags integration -o /tmp/probe.test ./internal/scan/checking/probe/
+
+      - name: run probe integration inside the image (real binaries)
+        # Run ONLY the //go:build integration tests in the image. The unit tests
+        # compiled into the same binary (parser goldens, exec-pgroup, missing-
+        # binary honesty) belong to the `fast` job: they need testdata/ (not in
+        # the image) and assume NO tool binaries are present — both false here.
+        # --init gives the test binary a real PID 1 that reaps subprocesses.
+        run: |
+          docker run --rm --init --entrypoint /probe.test \
+            -v /tmp/probe.test:/probe.test:ro \
+            chiller:ci -test.v -test.run TestIntegration
+
       - name: SBOM
         continue-on-error: true
         run: make sbom

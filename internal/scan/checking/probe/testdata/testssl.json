@@ -1,0 +1,1 @@
+[{"id":"SSLv3","severity":"HIGH","finding":"SSLv3 offered (deprecated)"},{"id":"cipher_order","severity":"OK","finding":"server order honored"},{"id":"TLS1_0","severity":"MEDIUM","finding":"TLS1.0 offered"}]
