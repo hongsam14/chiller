@@ -3,6 +3,7 @@
 package probe
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -99,8 +100,25 @@ func readPID(t *testing.T, path string) int {
 }
 
 func processAlive(pid int) bool {
-	// signal 0 probes existence without delivering a signal. The grandchild is
-	// not our direct child (sh is), so once the group is killed it is reparented
-	// to init and reaped → Kill returns ESRCH.
-	return syscall.Kill(pid, 0) == nil
+	// signal 0 probes existence without delivering a signal.
+	if syscall.Kill(pid, 0) != nil {
+		return false // gone (ESRCH) → reaped
+	}
+	// The PID may still exist as a ZOMBIE: killed but not yet reaped. That happens
+	// when the test binary is PID 1 (e.g. run directly as a container entrypoint)
+	// and does not reap the reparented grandchild. A zombie is effectively dead —
+	// the process-group kill worked — so read /proc/<pid>/stat and treat state 'Z'
+	// (and 'X'/dead) as not alive. Without this the test false-fails under PID 1.
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return false
+	}
+	// stat: "pid (comm) STATE ..." — the state char follows the ")".
+	if i := bytes.LastIndexByte(b, ')'); i >= 0 && i+2 < len(b) {
+		switch b[i+2] {
+		case 'Z', 'X', 'x':
+			return false // zombie / dead
+		}
+	}
+	return true
 }
