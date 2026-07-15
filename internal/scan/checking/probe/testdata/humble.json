@@ -1,1 +1,213 @@
-{"missing":["Strict-Transport-Security","X-Frame-Options"],"cookies":[{"name":"sid","secure":false,"httpOnly":false,"sameSite":false}]}
+{
+    "[0. Info]": {
+        "Generator": "https://github.com/rfc-st/humble | v.2026-07-13",
+        "Date": "2026/07/15 - 02:29:41",
+        "URL": "http://juiceshop:3000/",
+        "File": "/scratch/h.json",
+        "Note": "The history file, analysis_h.txt, could not be accessed (Permission denied)"
+    },
+    "[1. Enabled HTTP Security Headers]": [
+        {
+            "Header": "Access-Control-Allow-Origin",
+            "Value": "*"
+        },
+        {
+            "Header": "Cache-Control",
+            "Value": "public, max-age=0"
+        },
+        {
+            "Header": "Content-Type",
+            "Value": "text/html; charset=UTF-8"
+        },
+        {
+            "Header": "Feature-Policy",
+            "Value": "payment 'self'"
+        },
+        {
+            "Header": "X-Content-Type-Options",
+            "Value": "nosniff"
+        },
+        {
+            "Header": "X-Frame-Options",
+            "Value": "SAMEORIGIN"
+        }
+    ],
+    "[2. Missing HTTP Security Headers]": [
+        {
+            "Header": "Clear-Site-Data",
+            "Details": "Clears browsing data (cookies, storage, cache) associated with the requesting website.",
+            "References": [
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data"
+            ]
+        },
+        {
+            "Header": "Cross-Origin-Embedder-Policy",
+            "Details": "Prevents documents and workers from loading non-same-origin requests unless allowed.",
+            "References": [
+                "https://mdn.io/Cross-Origin-Embedder-Policy"
+            ]
+        },
+        {
+            "Header": "Cross-Origin-Opener-Policy",
+            "Details": "Prevent other websites from gaining arbitrary window references to a page.",
+            "References": [
+                "https://mdn.io/Cross-Origin-Opener-Policy"
+            ]
+        },
+        {
+            "Header": "Cross-Origin-Resource-Policy",
+            "Details": "Protect servers against certain cross-origin or cross-site embedding of the returned source.",
+            "References": [
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Cross-Origin_Resource_Policy"
+            ]
+        },
+        {
+            "Header": "Content-Security-Policy",
+            "Details": "Detect and mitigate Cross Site Scripting (XSS) and data injection attacks, among others.",
+            "References": [
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy"
+            ]
+        },
+        {
+            "Header": "Integrity-Policy",
+            "Details": "Blocks certain resource types without Subresource Integrity metadata.",
+            "References": [
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Integrity-Policy"
+            ]
+        },
+        {
+            "Header": "(*) NEL",
+            "Details": "Enables web applications to declare a reporting policy to report errors.",
+            "References": [
+                "https://scotthelme.co.uk/network-error-logging-deep-dive/"
+            ]
+        },
+        {
+            "Header": "(*) Permissions-Policy",
+            "Details": "Previously called \"Feature-Policy\", allow and deny the use of browser features.",
+            "References": [
+                "https://scotthelme.co.uk/goodbye-feature-policy-and-hello-permissions-policy/"
+            ]
+        },
+        {
+            "Header": "Referrer-Policy",
+            "Details": "Controls how much referrer information should be included with requests.",
+            "References": [
+                "https://scotthelme.co.uk/a-new-security-header-referrer-policy/"
+            ]
+        },
+        {
+            "Header": "Strict-Transport-Security",
+            "Details": "Tell browsers that it should only be accessed using HTTPS, instead of using HTTP.",
+            "References": [
+                "https://mdn.io/Strict-Transport-Security"
+            ]
+        },
+        {
+            "Header": "X-Permitted-Cross-Domain-Policies",
+            "Details": "Limit which data external resources (e.g. Adobe Flash/PDF documents), can access on the domain.",
+            "References": [
+                "https://github.com/OWASP/www-project-secure-headers/blob/master/mainsite/01_headers.md"
+            ]
+        }
+    ],
+    "[3. Fingerprint HTTP Response Headers]": [],
+    "[4. Deprecated HTTP Response Headers/Protocols and Insecure Values]": [
+        {
+            "Issue": "Access-Control-Allow-Origin (Unsafe Values)",
+            "Details": [
+                "Review the values '*' or 'null' regarding your Cross-origin resource sharing requirements."
+            ],
+            "References": [
+                "https://mdn.io/Access-Control-Allow-Origin"
+            ]
+        },
+        {
+            "Issue": "Cache-Control (Recommended Values)",
+            "Details": [
+                "Enable 'no-cache' and 'no-store' if there are sensitive data in the URL analyzed."
+            ],
+            "References": [
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control"
+            ]
+        },
+        {
+            "Issue": "Etag (Potentially Unsafe Header)",
+            "Details": [
+                "Although unlikely to be exploited, this header should not include inode information."
+            ],
+            "References": [
+                "https://www.pentestpartners.com/security-blog/vulnerabilities-that-arent-etag-headers/"
+            ]
+        },
+        {
+            "Issue": "Feature-Policy (Deprecated Header)",
+            "Details": [
+                "\"Feature-Policy\" has been renamed to \"Permissions-Policy\".",
+                "HTTP (URL Via Unsafe Scheme)",
+                "You are analyzing a domain via HTTP, in which the communications are not encrypted."
+            ],
+            "References": [
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Permissions-Policy",
+                "https://www.cloudflare.com/learning/ssl/why-is-http-not-secure/"
+            ]
+        },
+        {
+            "Issue": "Vary (Potentially Unsafe Header)",
+            "Details": [
+                "The values of this header may expose others, facilitating attacks if user input is accepted."
+            ],
+            "References": [
+                "https://www.yeswehack.com/fr/learn-bug-bounty/http-header-exploitation",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Vary"
+            ]
+        }
+    ],
+    "[5. Empty HTTP Response Headers Values]": {
+        "Description": "Empty HTTP headers (and are therefore considered disabled)",
+        "Result": "Nothing to report, all seems OK!"
+    },
+    "[6. Browser Compatibility for Enabled HTTP Security Headers]": [
+        {
+            "Header": "Cache-Control",
+            "Reference": "https://caniuse.com/?search=Cache-Control"
+        },
+        {
+            "Header": "Content-Type",
+            "Reference": "https://caniuse.com/?search=Content-Type"
+        },
+        {
+            "Header": "ETag",
+            "Reference": "https://caniuse.com/?search=ETag"
+        },
+        {
+            "Header": "Feature-Policy",
+            "Reference": "https://caniuse.com/?search=Feature-Policy"
+        },
+        {
+            "Header": "Vary",
+            "Reference": "https://caniuse.com/?search=Vary"
+        },
+        {
+            "Header": "X-Content-Type-Options",
+            "Reference": "https://caniuse.com/?search=X-Content-Type-Options"
+        },
+        {
+            "Header": "X-Frame-Options",
+            "Reference": "https://caniuse.com/?search=X-Frame-Options"
+        }
+    ],
+    "[7. Analysis Results]": {
+        "Duration": "Done in 0.01 seconds! (changes with respect to the last analysis in parentheses)",
+        "Enabled headers": "6 (Not available)",
+        "Missing headers": "11 (Not available)",
+        "Fingerprint headers": "0 (Not available)",
+        "Deprecated/Insecure headers": "6 (Not available)",
+        "Empty headers": "0 (Not available)",
+        "Findings to review": "17 (Not available)",
+        "Analysis Grade": "D (Review 'Deprecated/Insecure headers')",
+        "'(*)' meaning": "Experimental HTTP response directive or header",
+        "'(*)' ref": "https://mdn.io/Experimental_deprecated_obsolete",
+        "'(Not available)' meaning": "The history file, analysis_h.txt, could not be accessed"
+    }
+}

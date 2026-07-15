@@ -22,6 +22,12 @@ const (
 	cweSessionURL     domain.CWE = "CWE-598" // PS-018
 	cweCrossdomain    domain.CWE = "CWE-942" // PS-022
 	cweCaptcha        domain.CWE = "CWE-799" // PS-023
+	// Cookie-flag items — moved here from probe:humble (#0d): humble analyses
+	// response headers only, never Set-Cookie attributes. The fetched response
+	// already carries parsed Cookies, so these are pure in-process checks.
+	cweCookieSecure   domain.CWE = "CWE-614"  // PS-015 (Secure)
+	cweCookieHTTPOnly domain.CWE = "CWE-1004" // PS-016 (HttpOnly)
+	cweCookieSameSite domain.CWE = "CWE-1275" // PS-017 (SameSite)
 )
 
 // finding is a small helper to build a native observation finding.
@@ -220,6 +226,91 @@ func (captchaAbsenceSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 	}
 	if !captchaMarker.MatchString(body) {
 		return []domain.Finding{finding(cweCaptcha, ctx.Target.URL, domain.SevLow, "login form without CAPTCHA")}, false, nil
+	}
+	return nil, false, nil
+}
+
+// ---- PS-015/016/017: insecure cookie flags (moved from probe:humble, #0d) ----
+// The fetcher already parses Set-Cookie into ctx.Response.Cookies. Each signature
+// judges ONE attribute across all cookies: any cookie missing it → a finding; no
+// cookies at all → N/A (nothing to judge). One-finding-per-CWE (R7), so a single
+// finding names the first offending cookie and the total count.
+
+func offendingCookies(cs []domain.Cookie, bad func(domain.Cookie) bool) (first string, n int) {
+	for _, c := range cs {
+		if bad(c) {
+			n++
+			if first == "" {
+				first = c.Name
+			}
+		}
+	}
+	return first, n
+}
+
+// cookieFinding builds the single per-CWE finding. desc states the exact defect
+// (a boolean flag is "without X"; SameSite is a value, so a permissive/absent
+// value is described accurately rather than as merely "without SameSite").
+func cookieFinding(cwe domain.CWE, url, desc, first string, n int) []domain.Finding {
+	ev := desc + ": " + first
+	if n > 1 {
+		ev = ev + " (+" + itoa(n-1) + " more)"
+	}
+	return []domain.Finding{finding(cwe, url, domain.SevMedium, ev)}
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
+}
+
+type cookieSecureSig struct{}
+
+func (cookieSecureSig) CWE() domain.CWE { return cweCookieSecure }
+func (cookieSecureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
+	if ctx.Response == nil || len(ctx.Response.Cookies) == 0 {
+		return nil, true, nil // no cookies → not applicable
+	}
+	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool { return !c.Secure }); n > 0 {
+		return cookieFinding(cweCookieSecure, ctx.Target.URL, "cookie without Secure", first, n), false, nil
+	}
+	return nil, false, nil
+}
+
+type cookieHTTPOnlySig struct{}
+
+func (cookieHTTPOnlySig) CWE() domain.CWE { return cweCookieHTTPOnly }
+func (cookieHTTPOnlySig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
+	if ctx.Response == nil || len(ctx.Response.Cookies) == 0 {
+		return nil, true, nil
+	}
+	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool { return !c.HttpOnly }); n > 0 {
+		return cookieFinding(cweCookieHTTPOnly, ctx.Target.URL, "cookie without HttpOnly", first, n), false, nil
+	}
+	return nil, false, nil
+}
+
+type cookieSameSiteSig struct{}
+
+func (cookieSameSiteSig) CWE() domain.CWE { return cweCookieSameSite }
+func (cookieSameSiteSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
+	if ctx.Response == nil || len(ctx.Response.Cookies) == 0 {
+		return nil, true, nil
+	}
+	// SameSite absent (empty) or the permissive "None" both leave CSRF exposure.
+	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool {
+		return c.SameSite == "" || strings.EqualFold(c.SameSite, "None")
+	}); n > 0 {
+		return cookieFinding(cweCookieSameSite, ctx.Target.URL, "cookie with weak SameSite (missing or None)", first, n), false, nil
 	}
 	return nil, false, nil
 }

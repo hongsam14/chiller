@@ -10,14 +10,16 @@ import (
 // sync with configs/mappings/kisa.yaml). Distinct CWEs — no two checkers share a
 // CWE, so ownership → PS-ID is unambiguous.
 var (
-	// humble covers 5 header/cookie items, one CWE each.
-	cwesHumble = []domain.CWE{"CWE-319", "CWE-614", "CWE-1004", "CWE-1275", "CWE-1021"} // PS-001/015/016/017/024
-	cwesHttpx  = []domain.CWE{"CWE-693"}                                                // PS-007, PS-020 (version)
-	cwesTLS    = []domain.CWE{"CWE-1327"}                                               // PS-002
-	cwesDir    = []domain.CWE{"CWE-548"}                                                // PS-004
-	cwesDefCr  = []domain.CWE{"CWE-798"}                                                // PS-019
-	cwesCORS   = []domain.CWE{"CWE-346"}                                                // PS-021 (Origin validation)
-	cwesSubzy  = []domain.CWE{domain.NoCanonicalCWE}                                    // PS-025 (attacker axis, ATT&CK)
+	// humble analyses response security HEADERS only (not cookies), so it owns
+	// just HSTS (PS-001) + clickjacking (PS-024). Cookie flag items PS-015/016/017
+	// (CWE-614/1004/1275) moved to the observation Set-Cookie signatures (#0d).
+	cwesHumble = []domain.CWE{"CWE-319", "CWE-1021"} // PS-001, PS-024
+	cwesHttpx  = []domain.CWE{"CWE-693"}             // PS-007, PS-020 (version)
+	cwesTLS    = []domain.CWE{"CWE-1327"}            // PS-002
+	cwesDir    = []domain.CWE{"CWE-548"}             // PS-004
+	cwesDefCr  = []domain.CWE{"CWE-798"}             // PS-019
+	cwesCORS   = []domain.CWE{"CWE-346"}             // PS-021 (Origin validation)
+	cwesSubzy  = []domain.CWE{domain.NoCanonicalCWE} // PS-025 (attacker axis, ATT&CK)
 )
 
 // stubParse backs an unwired adapter (no real parser yet). Still referenced by

@@ -17,9 +17,10 @@ func TestRegistry_OwnershipForFindings(t *testing.T) {
 		_ = r.Register(p)
 	}
 	own := r.OwnershipForFindings()
-	// 10 observation signature-checkers + 7 probe adapters, each declaring CWEs.
-	if len(own) != 17 {
-		t.Errorf("ownership entries = %d, want 17", len(own))
+	// 13 observation signature-checkers (10 + 3 cookie-flag sigs moved from humble,
+	// #0d) + 7 probe adapters, each declaring CWEs.
+	if len(own) != 20 {
+		t.Errorf("ownership entries = %d, want 20", len(own))
 	}
 	if got := own["observation:CWE-615"]; len(got) != 1 || got[0] != "CWE-615" {
 		t.Errorf("observation:CWE-615 ownership = %v", got)
