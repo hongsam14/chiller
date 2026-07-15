@@ -202,23 +202,25 @@ type humbleHeaderItem struct {
 
 // humbleSection returns the header names in the first section whose title
 // contains want (e.g. "Missing HTTP Security Headers"). Header names may carry a
-// leading "(*) " experimental marker, which is trimmed.
-func humbleSection(doc map[string]json.RawMessage, want string) []string {
+// leading "(*) " experimental marker, which is trimmed. A matched section whose
+// body fails to unmarshal is surfaced as an error (F6 honesty invariant) so the
+// probe is marked tool-failed rather than silently producing no findings.
+func humbleSection(doc map[string]json.RawMessage, want string) ([]string, error) {
 	for title, raw := range doc {
 		if !strings.Contains(title, want) {
 			continue
 		}
 		var items []humbleHeaderItem
-		if json.Unmarshal(raw, &items) != nil {
-			return nil
+		if err := json.Unmarshal(raw, &items); err != nil {
+			return nil, err
 		}
 		names := make([]string, 0, len(items))
 		for _, it := range items {
 			names = append(names, strings.TrimSpace(strings.TrimPrefix(it.Header, "(*)")))
 		}
-		return names
+		return names, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func humbleParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
@@ -230,7 +232,10 @@ func humbleParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 	if err := json.Unmarshal(stdout, &doc); err != nil {
 		return nil, err // malformed tool output → tool-failed, not silent clean
 	}
-	missing := humbleSection(doc, "Missing HTTP Security Headers")
+	missing, err := humbleSection(doc, "Missing HTTP Security Headers")
+	if err != nil {
+		return nil, err // malformed section body → tool-failed, not silent clean
+	}
 	has := func(names []string, h string) bool {
 		for _, n := range names {
 			if strings.EqualFold(n, h) {

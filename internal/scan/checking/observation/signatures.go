@@ -248,8 +248,11 @@ func offendingCookies(cs []domain.Cookie, bad func(domain.Cookie) bool) (first s
 	return first, n
 }
 
-func cookieFinding(cwe domain.CWE, url, attr, first string, n int) []domain.Finding {
-	ev := "cookie without " + attr + ": " + first
+// cookieFinding builds the single per-CWE finding. desc states the exact defect
+// (a boolean flag is "without X"; SameSite is a value, so a permissive/absent
+// value is described accurately rather than as merely "without SameSite").
+func cookieFinding(cwe domain.CWE, url, desc, first string, n int) []domain.Finding {
+	ev := desc + ": " + first
 	if n > 1 {
 		ev = ev + " (+" + itoa(n-1) + " more)"
 	}
@@ -278,7 +281,7 @@ func (cookieSecureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, er
 		return nil, true, nil // no cookies → not applicable
 	}
 	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool { return !c.Secure }); n > 0 {
-		return cookieFinding(cweCookieSecure, ctx.Target.URL, "Secure", first, n), false, nil
+		return cookieFinding(cweCookieSecure, ctx.Target.URL, "cookie without Secure", first, n), false, nil
 	}
 	return nil, false, nil
 }
@@ -291,7 +294,7 @@ func (cookieHTTPOnlySig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 		return nil, true, nil
 	}
 	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool { return !c.HttpOnly }); n > 0 {
-		return cookieFinding(cweCookieHTTPOnly, ctx.Target.URL, "HttpOnly", first, n), false, nil
+		return cookieFinding(cweCookieHTTPOnly, ctx.Target.URL, "cookie without HttpOnly", first, n), false, nil
 	}
 	return nil, false, nil
 }
@@ -307,7 +310,7 @@ func (cookieSameSiteSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool {
 		return c.SameSite == "" || strings.EqualFold(c.SameSite, "None")
 	}); n > 0 {
-		return cookieFinding(cweCookieSameSite, ctx.Target.URL, "SameSite", first, n), false, nil
+		return cookieFinding(cweCookieSameSite, ctx.Target.URL, "cookie with weak SameSite (missing or None)", first, n), false, nil
 	}
 	return nil, false, nil
 }
