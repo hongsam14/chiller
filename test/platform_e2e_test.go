@@ -229,13 +229,13 @@ func TestE2E_ProbesWithoutBinaries_ToolFailed_NotChecked(t *testing.T) {
 			na++
 		}
 	}
-	// The 12 probe-owned items are unjudged (no binaries in this env). The 10
-	// observation-owned items were judged — each landing Checked or (legitimately,
-	// for this bare target) N/A; the split is target-dependent, so only their sum
-	// is fixed.
-	if failed != 12 || delegated != 4 || checked+na != 10 {
+	// After #0d, 9 items are probe-owned (cookie PS-015/016/017 moved to the
+	// observation engine), so 9 are unjudged here (no binaries). The 13
+	// observation-owned items (10 original + 3 cookie) were judged — each Checked
+	// or (legitimately, for this bare cookie-less target) N/A; only their sum is fixed.
+	if failed != 9 || delegated != 4 || checked+na != 13 {
 		t.Errorf("honest accounting drifted: checked=%d n/a=%d tool-failed=%d delegated=%d "+
-			"(want 12 probe-owned unjudged [no binaries], 4 delegated, 10 observation judged)",
+			"(want 9 probe-owned unjudged [no binaries], 4 delegated, 13 observation judged)",
 			checked, na, failed, delegated)
 	}
 	if checked == 0 {

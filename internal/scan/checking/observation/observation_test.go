@@ -73,10 +73,10 @@ func TestSignatures_Anchors(t *testing.T) {
 	}
 }
 
-func TestDefault_TenSignatures_DistinctCWEs(t *testing.T) {
+func TestDefault_ThirteenSignatures_DistinctCWEs(t *testing.T) {
 	sigs := Default()
-	if len(sigs) != 10 {
-		t.Fatalf("want 10 observation signatures, got %d", len(sigs))
+	if len(sigs) != 13 { // 10 original + 3 cookie-flag sigs moved from humble (#0d)
+		t.Fatalf("want 13 observation signatures, got %d", len(sigs))
 	}
 	seen := map[domain.CWE]bool{}
 	for _, s := range sigs {
