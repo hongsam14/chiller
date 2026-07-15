@@ -178,11 +178,17 @@ func testsslParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 	return out, nil
 }
 
-// ---- humble (URL, PS-001/015/016/017/024 · header/cookie CWEs) ----
-// humble (rfc-st/humble) exports with -o json -of <FILE>. Its real schema is
-// richer than the fields parsed below; unknown keys are ignored, so a benign
-// target simply yields no findings (F4/F6 — positive-finding schema stays
-// golden-fixture-only until a real weak target is available).
+// ---- humble (URL, PS-001 HSTS + PS-024 clickjacking) ----
+// humble (rfc-st/humble) analyses RESPONSE SECURITY HEADERS only — it does NOT
+// inspect cookies, so PS-015/016/017 (cookie Secure/HttpOnly/SameSite) are NOT
+// humble's to judge; those moved to the observation engine (Set-Cookie sigs).
+// humble owns exactly CWE-319 (HSTS) + CWE-1021 (clickjacking).
+//
+// Real schema (verified against Juice Shop): a JSON object whose keys are
+// numbered section titles ("[1. Enabled HTTP Security Headers]", "[2. Missing
+// HTTP Security Headers]", ...). Each header section is an array of {Header,
+// Details, References}. We match sections by substring so a shift in the section
+// number does not break parsing.
 func humbleOutArg(t domain.Target, outPath string) []string {
 	// humble splits output into -op <dir> + -of <filename>; a full path in -of
 	// alone hits a permission error. Feeding dir+base of the runner's temp path
@@ -190,16 +196,29 @@ func humbleOutArg(t domain.Target, outPath string) []string {
 	return []string{"-u", t.URL, "-o", "json", "-op", filepath.Dir(outPath), "-of", filepath.Base(outPath)}
 }
 
-type humbleReport struct {
-	Missing []string       `json:"missing"` // missing security response headers
-	Cookies []humbleCookie `json:"cookies"`
+type humbleHeaderItem struct {
+	Header string `json:"Header"`
 }
 
-type humbleCookie struct {
-	Name     string `json:"name"`
-	Secure   bool   `json:"secure"`
-	HTTPOnly bool   `json:"httpOnly"`
-	SameSite bool   `json:"sameSite"`
+// humbleSection returns the header names in the first section whose title
+// contains want (e.g. "Missing HTTP Security Headers"). Header names may carry a
+// leading "(*) " experimental marker, which is trimmed.
+func humbleSection(doc map[string]json.RawMessage, want string) []string {
+	for title, raw := range doc {
+		if !strings.Contains(title, want) {
+			continue
+		}
+		var items []humbleHeaderItem
+		if json.Unmarshal(raw, &items) != nil {
+			return nil
+		}
+		names := make([]string, 0, len(items))
+		for _, it := range items {
+			names = append(names, strings.TrimSpace(strings.TrimPrefix(it.Header, "(*)")))
+		}
+		return names
+	}
+	return nil
 }
 
 func humbleParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
@@ -207,29 +226,30 @@ func humbleParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 	if len(stdout) == 0 {
 		return nil, nil
 	}
-	var r humbleReport
-	if err := json.Unmarshal(stdout, &r); err != nil {
-		return nil, err
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(stdout, &doc); err != nil {
+		return nil, err // malformed tool output → tool-failed, not silent clean
+	}
+	missing := humbleSection(doc, "Missing HTTP Security Headers")
+	has := func(names []string, h string) bool {
+		for _, n := range names {
+			if strings.EqualFold(n, h) {
+				return true
+			}
+		}
+		return false
 	}
 	var out []domain.Finding
-	for _, h := range r.Missing {
-		switch {
-		case strings.EqualFold(h, "Strict-Transport-Security"):
-			out = append(out, pFinding("CWE-319", "humble", t.URL, "missing HSTS header"))
-		case strings.EqualFold(h, "X-Frame-Options"), strings.Contains(strings.ToLower(h), "frame"):
-			out = append(out, pFinding("CWE-1021", "humble", t.URL, "missing frame-options / clickjacking protection"))
-		}
+	// PS-001 (CWE-319): HSTS not set → cleartext-transport downgrade risk.
+	if has(missing, "Strict-Transport-Security") {
+		out = append(out, pFinding("CWE-319", "humble", t.URL, "Strict-Transport-Security header missing (no HSTS)"))
 	}
-	for _, c := range r.Cookies {
-		if !c.Secure {
-			out = append(out, pFinding("CWE-614", "humble", t.URL, "cookie without Secure: "+c.Name))
-		}
-		if !c.HTTPOnly {
-			out = append(out, pFinding("CWE-1004", "humble", t.URL, "cookie without HttpOnly: "+c.Name))
-		}
-		if !c.SameSite {
-			out = append(out, pFinding("CWE-1275", "humble", t.URL, "cookie without SameSite: "+c.Name))
-		}
+	// PS-024 (CWE-1021): clickjacking unprotected only when BOTH X-Frame-Options
+	// and a Content-Security-Policy (which could carry frame-ancestors) are
+	// absent. A target that sets either (e.g. Juice Shop's X-Frame-Options) is
+	// clean — no false positive.
+	if has(missing, "X-Frame-Options") && has(missing, "Content-Security-Policy") {
+		out = append(out, pFinding("CWE-1021", "humble", t.URL, "no clickjacking protection (X-Frame-Options and CSP both absent)"))
 	}
 	return out, nil
 }
@@ -290,14 +310,16 @@ func corsyOutArg(t domain.Target, outPath string) []string {
 	return []string{"-u", t.URL, "-o", outPath, "-q"}
 }
 
-type corsyReport struct {
-	Results []corsyResult `json:"results"`
-}
-
-type corsyResult struct {
-	URL      string `json:"url"`
-	Type     string `json:"type"`
+// Real Corsy schema (verified against Juice Shop): a JSON object keyed by the
+// tested URL, each value {class, description, severity, exploitation, "acao
+// header", "acac header"}. Any entry present IS a CORS misconfiguration Corsy
+// flagged (it only writes entries it found). We map every entry to CWE-346 and
+// carry the misconfig class + the reflected ACAO/ACAC values as evidence.
+type corsyEntry struct {
+	Class    string `json:"class"`
 	Severity string `json:"severity"`
+	ACAO     string `json:"acao header"`
+	ACAC     string `json:"acac header"`
 }
 
 func corsyParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
@@ -305,13 +327,14 @@ func corsyParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 	if len(stdout) == 0 {
 		return nil, nil
 	}
-	var r corsyReport
-	if err := json.Unmarshal(stdout, &r); err != nil {
+	var doc map[string]corsyEntry
+	if err := json.Unmarshal(stdout, &doc); err != nil {
 		return nil, err
 	}
 	var out []domain.Finding
-	for _, res := range r.Results {
-		out = append(out, pFinding("CWE-346", "corsy", t.URL, "CORS misconfiguration ("+res.Type+"): "+res.URL))
+	for url, e := range doc {
+		out = append(out, pFinding("CWE-346", "corsy", t.URL,
+			"CORS misconfiguration ["+e.Class+"] at "+url+" (ACAO="+e.ACAO+", ACAC="+e.ACAC+")"))
 		if len(out) >= domain.MaxEvidenceSnippets {
 			break
 		}

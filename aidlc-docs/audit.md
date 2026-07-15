@@ -1039,3 +1039,67 @@ VERIFIED: build/vet/gofmt/arch-check OK, `go test ./...` pass, `-race` clean.
 **Context**: Increment close-out + AI-DLC status assessment.
 
 ---
+
+## Workspace Detection — resume (new increment: probe parser fidelity #0d)
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "현재까지 작업 PR하고 다음 작업은 실측"
+**AI Response**: PR #11 (probe wiring) confirmed OPEN/current (10 commits, origin-synced) — current work handed off as the PR. Started next increment (#0d, production-readiness): validate/fix probe positive-finding parser schemas against real weak targets. Branch feat/probe-parser-fidelity off feat/probe-wiring (needs the parser code from #11). Brownfield resume; Reverse Eng skipped. Entering Requirements Analysis — the crux is where the deliberately-weak targets come from (weak TLS, dir listing, permissive CORS, dangling subdomain, missing headers).
+**Context**: INCEPTION - Workspace Detection (resume) → Requirements Analysis (#0d parser fidelity).
+
+---
+
+## Requirements Analysis — #0d parser fidelity answers
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "답변 완료" — Q1=X ("이미 만든 외부 취약 사이트가 있는데 이걸 활용하는건? OWASP Juiceshop을 써도 되고"), Q2=A (humble+httpx 우선, 나머지 후속), Q3=X ("외부 취약 사이트 + OWASP Juiceshop 활용"), Q4=A (실 출력→testdata 골든 고정).
+**AI Response**: Target strategy = user's existing external vuln site + OWASP Juice Shop (real, owned/authorized targets) instead of local synthetic fixtures. Need the concrete target address to capture real output. Juice Shop suits the Q2=A priority tools (humble missing-headers, httpx tech/version, and Juice Shop also has permissive CORS). Note: Juice Shop (local http) does NOT exhibit weak-TLS/dir-listing/dangling-subdomain, so testssl/dirhunt/subzy stay deferred (consistent with Q2=A) unless the external site provides TLS. Creating a short clarification for the concrete target URLs before finalizing requirements.
+**Context**: INCEPTION - Requirements Analysis (#0d). Answers noted; clarifying concrete targets.
+
+---
+
+## Requirements Analysis — #0d targets confirmed; requirements generated
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "답변 완료" — C1=A (I run Juice Shop locally via docker, http://localhost:3000), C2=B (Juice Shop only this increment; external vuln site deferred).
+**AI Response**: Generated requirements-parser-fidelity.md. Target = OWASP Juice Shop local docker. Scope = rewrite humble parser (real section-based schema — currently yields 0 findings) + validate/refine httpx, opportunistically Corsy (Juice Shop has permissive CORS). testssl/dirhunt/subzy deferred (Juice Shop local http lacks weak-TLS/dir-listing/dangling-subdomain) — kept spec-based, documented as unmeasured. Golden = real captured output (Q4=A); integration test upgraded to assert positive findings. Presenting approval gate.
+**Context**: INCEPTION - Requirements Analysis (#0d). Approval gate.
+
+---
+
+## Requirements approved; Workflow Planning (#0d)
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: Requirements approved. Workflow Planning: created execution-plan-parser-fidelity.md. Risk=Low, application-only. EXECUTE = Code Generation + Build and Test (+ Operations #0d partial close). SKIP = Reverse Eng, User Stories, App Design, Units Gen, Functional Design, NFR Req/Design, Infrastructure Design (single-file parser fix; image/deploy unchanged, reuse #11 image). Presenting approval gate.
+**Context**: INCEPTION - Workflow Planning (#0d). Approval gate.
+
+---
+
+## Workflow Planning approved; Code Generation (#0d)
+**Timestamp**: 2026-07-14T00:00:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: Workflow Planning approved. Entering Code Generation. Starting Juice Shop (docker) + rebuilding the probe image to capture real humble/httpx output, which informs the parser plan.
+**Context**: CONSTRUCTION - Code Generation (#0d).
+
+---
+
+## Code Generation Part 1 — real captures + cookie decision (Option A)
+**Timestamp**: 2026-07-14T00:00:00Z
+**AI Response**: Started Juice Shop (docker) + rebuilt probe image; captured REAL outputs. Discoveries: (humble) real schema is section-based ("[2. Missing HTTP Security Headers]" array etc.) AND humble does NOT analyze cookies → can only cover PS-001 (HSTS) + PS-024 (clickjacking); (httpx) schema correct (webserver/tech) but needs explicit port, real output nginx/1.27.5; (Corsy) real schema is a URL→{class,"acao header",severity} MAP (not {results:[]}), Juice Shop yields a wildcard-ACAO positive. So humble AND Corsy parsers need rewriting; httpx just needs a real golden.
+**User Input** (cookie ownership decision): "옵션 A — observation으로 이전 (권장)".
+**AI Response**: Locked Option A — add 3 observation Set-Cookie signatures (Secure/HttpOnly/SameSite → CWE-614/1004/1275), move those CWEs' ownership from probe:humble to observation (kisa.yaml + adapters.go), removing the false-clean. Created parser-fidelity-code-generation-plan.md (P1 humble rewrite, P2 Corsy rewrite, P3 httpx golden, P4 observation cookie sigs + ownership move, P5 goldens+unit positive, P6 integration positive, P7 summary). Presenting Part 1 approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 1 (#0d). Approval gate before generation.
+
+---
+
+## Code Generation Part 2 — #0d parser fidelity generated
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Response**: Executed the plan. P1: rewrote humbleParse to the real section-based schema (headers only → PS-001 HSTS CWE-319, PS-024 clickjacking CWE-1021 only when both X-Frame-Options AND CSP missing). P2: rewrote corsyParse to the real URL→{class,"acao header",severity} map schema → CWE-346. P3: httpx golden replaced with real nginx/1.27.5 output (parser logic unchanged, already schema-correct). P4 (Option A): added 3 observation Set-Cookie signatures (cookieSecure/HttpOnly/SameSite → CWE-614/1004/1275) reading HAREntry.Cookies; removed cookie CWEs from humble's cwesHumble (humble=319/1021); kisa.yaml comment update; engine Default() = 13. Ownership moved probe→observation (probe-owned 12→9, observation 10→13). P5: real goldens (humble/corsy/httpx from Juice Shop/nginx captures) + parser unit tests assert positive findings (humble CWE-319, corsy CWE-346, httpx CWE-693) + cookie_test.go (insecure/secured/no-cookie-N/A/SameSite=None). Updated count tests (observation 13, registry 20, e2e 9/4/13). P6: upgraded integration URL-probes test to assert POSITIVE findings against a weak httptest target — verified in-image: humble/httpx/corsy all extract their CWE. P7: parser-fidelity-summary.md. VERIFIED: build/vet(+integration)/gofmt/arch-check/`go test ./... -race`/gosec(0) green + in-image positive integration green. Honest deferral: testssl/dirhunt/subzy positive-schema still unmeasured (Juice Shop local http lacks their weak surfaces). Presenting approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 2 (#0d). Approval gate.
+
+---
+
+## Code Gen approved by real-run verification; Build&Test + Operations closed
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: "실제로 동작하는지 다시 확인" → "https://kblife-clone.com/으로" → "정리하고 커밋·PR로 마무리해줘"
+**AI Response**: Verified end-to-end by running the real chiller image (with real probe binaries) against OWASP Juice Shop and https://kblife-clone.com/. Results: humble extracted CWE-319 (HSTS) on both, and CWE-1021 (clickjacking) on kblife-clone.com (Juice Shop had X-Frame set, so cleanly no-FP there) — proving the rewritten humble parser yields real findings (was 0 before #0d). Corsy extracted CWE-346 (wildcard ACAO) on Juice Shop. testssl actually ran against the HTTPS target (PS-002 checked, TLS sound). Cookie observation sigs correctly N/A on cookie-less pages (false-clean removed). 26-partition intact both scans; honesty preserved (only changeme tool_failed). Cleaned up all docker resources (containers/network/image). Build and Test closed (local build/vet/gofmt/arch-check/race/gosec green + in-image positive integration). Operations: production-readiness #0d marked partial-DONE (humble/httpx/corsy validated; testssl/dirhunt/subzy positive-schema still deferred). Committing + updating PR.
+**Context**: CONSTRUCTION Build&Test + OPERATIONS (#0d) closed via real-run verification.
+
+---

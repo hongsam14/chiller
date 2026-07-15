@@ -36,26 +36,44 @@ func binaryOnPath(tool string) bool {
 // tools should run and their parsers should not error — proving the real
 // os/exec + real-output-parse path end to end.
 func TestIntegration_URLProbes_RealExecAndParse(t *testing.T) {
+	// A deliberately-weak local server: a version banner (httpx → CWE-693), a
+	// wildcard ACAO (Corsy → CWE-346), and no HSTS/X-Frame/CSP (humble → CWE-319
+	// + CWE-1021). This proves each probe extracts a REAL positive finding from
+	// real tool output — not just "runs clean" (#0d).
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Server", "nginx/1.18.0") // a version banner httpx can report
+		w.Header().Set("Server", "nginx/1.27.5")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		_, _ = w.Write([]byte(`<html><body>ok</body></html>`))
 	}))
 	defer srv.Close()
 	host := srv.Listener.Addr().String()
 	target := domain.Target{URL: srv.URL + "/", Host: host, Scheme: "http"}
 
+	want := map[string]domain.CWE{"humble": "CWE-319", "httpx": "CWE-693", "corsy": "CWE-346"}
 	for _, a := range []Adapter{Humble(), Httpx(), Corsy()} {
 		a := a
 		t.Run(a.ToolName(), func(t *testing.T) {
 			if !binaryOnPath(a.ToolName()) {
 				t.Skipf("%s not installed in this image — skipping", a.ToolName())
 			}
-			// The runner bounds each exec with its own timeout (NFR-P1/NFR-12).
-			_, err := a.Check(domain.ScanContext{Target: target})
-			// The tool may legitimately find nothing (→ empty, nil). What must NOT
-			// happen is a parse error on real output (schema drift).
+			res, err := a.Check(domain.ScanContext{Target: target})
 			if err != nil {
-				t.Errorf("%s: real exec+parse errored on a clean target (schema drift?): %v", a.ToolName(), err)
+				t.Fatalf("%s: real exec+parse errored (schema drift?): %v", a.ToolName(), err)
+			}
+			// The tool ran against a weak target → it must extract at least one
+			// finding, and its owned CWE must appear (real positive extraction).
+			wantCWE := want[a.ToolName()]
+			found := false
+			for _, f := range res.Findings {
+				for _, c := range f.CWEs {
+					if c == wantCWE {
+						found = true
+					}
+				}
+			}
+			if !found {
+				t.Errorf("%s: expected a %s finding from the weak target, got %d findings %v",
+					a.ToolName(), wantCWE, len(res.Findings), res.Findings)
 			}
 		})
 	}

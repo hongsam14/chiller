@@ -1,1 +1,10 @@
-{"results":[{"url":"https://a.test/api","type":"origin reflected","severity":"high"}]}
+{
+    "http://juiceshop:3000/": {
+        "class": "wildcard value",
+        "description": "This host allows requests made from any origin. However, browsers will block all requests to this host by default.",
+        "severity": "low",
+        "exploitation": "Not possible",
+        "acao header": "*",
+        "acac header": null
+    }
+}

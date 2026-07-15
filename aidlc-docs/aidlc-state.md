@@ -47,6 +47,14 @@ Q8=B propose IR+COE.
 - **D2**: 세션 설계 = "능동 전제"가 아니라 **로그인 뒤 표면 커버리지 전제(능동·수동 공통)**. 능동 5개 중 세션 쓰는 건 dirhunt·Corsy 2개뿐(testssl/changeme/subzy는 세션 무관). 세션이 진짜 살리는 건 인증 수동검사 + JS캡처 API 트래픽(스코프 본체).
 - 스코프 정합 항목 17개(observation 10+humble 5+httpx 2) + 캡처 인프라 전부 IN. 능동 유지하되 익스플로잇/퍼징은 스코프 라인.
 
+## ✅ CLOSED Increment (2026-07-15) — Probe 파서 실측 (#0d, r8)
+Docker 실검증: chiller 이미지로 Juice Shop + **kblife-clone.com(실 HTTPS)** 스캔 → humble이 HSTS(CWE-319)·**clickjacking(CWE-1021)** 실 finding 산출(재작성 전 0개), corsy CORS 실 finding, testssl HTTPS 실행(TLS 양호), 쿠키 소유권 이전 정상(Set-Cookie 없는 페이지 N/A), 26 파티션·정직성 유지. Build&Test(로컬 green)·Operations(production-readiness #0d partial-DONE) 마감. 다음: testssl/dirhunt/subzy positive 실측(취약 대상 확보 시).
+
+## Active Increment (2026-07-14) — Probe 파서 실측 (#0d, r8)
+Branch `feat/probe-parser-fidelity` (off feat/probe-wiring). Target: OWASP Juice Shop 로컬 docker. Scope: humble 파서 실 섹션기반 재작성(현재 finding 0) + httpx 검증 + 기회적 Corsy; testssl/dirhunt/subzy 이월. Golden=실 출력.
+- **Requirements** — `inception/requirements/requirements-parser-fidelity.md` **approved 2026-07-14**. (C1=A Juice Shop 로컬·C2=B Juice Shop만·Q2=A humble+httpx·Q4=A 골든)
+- **Workflow Planning · Code Gen(P1+P2)** — **완료 2026-07-15, approval pending**. humble 파서 섹션기반 재작성(헤더만)·Corsy 맵스키마 재작성·httpx 실 골든. **쿠키 소유권 이전(옵션 A)**: observation Set-Cookie 시그니처 3(CWE-614/1004/1275), humble=319/1021만. probe-owned 12→9, observation 10→13, 26 파티션 유지. 실 골든(Juice Shop/nginx) + **이미지 통합 positive 단언 green**(humble CWE-319·httpx CWE-693·corsy CWE-346). testssl/dirhunt/subzy positive 미실측 이월(production-readiness #0d partial). 로컬 build/vet/gofmt/arch-check/race/gosec(0) green. 요약 `construction/scan/code/parser-fidelity-summary.md`.
+
 ## ✅ CLOSED Increment (2026-07-14) — Probe CLI 배선 (r7) — Docker 검증·PR #11
 PR #11 (feat/probe-wiring). 커밋 3fe8e63(배선)·d2ca0ac(Docker 교정)·2e18e79(UI coverage). **다음 증분 후보: #0d(취약 대상 파서 실측) · §2 금융 세션(JS 토큰→무거운 설계) · §3(FindingsStore/ResponseCache→durable, 일부 완료) · §5(OTel/OIDC) · §4(PlaywrightDiscoverer).**
 Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP PRIORITY). **결과: 6/7 배선**(humble·httpx·Corsy·testssl·dirhunt·subzy), changeme(PS-019) 잠정 미배선(F5). 실행 시 최대 21/26 판정. **모든 AI-DLC 단계 승인 완료** + **실 Docker 검증 완료**(2026-07-14): 이미지 빌드 후 **6/6 probe가 이미지 내부에서 실 바이너리로 실행·파싱 clean 통과**(URL humble/httpx/corsy; Host testssl/dirhunt/subzy). 첫 실행이 F6를 현실화 — 파일출력 계약·툴 패키징(humble/Corsy=git, subzy=LukaSikic)·deps(hexdump/dig)·타임아웃·dirhunt 기존파일 버그·subzy HOME 전부 교정. production-readiness **#0a/#0b/#0c → DONE**. 커밋 3fe8e63(배선)+d2ca0ac(Docker 교정). **잔여 #0d(정직)**: positive-finding 스키마 미검증 — benign 대상은 empty/clean, humble 파서는 실 섹션기반 스키마와 달라 finding 미추출 → 취약 대상으로 파서/골든 실측 재작성 필요.
