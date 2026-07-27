@@ -3,6 +3,7 @@ package observation
 import (
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/hongsam14/chiller/internal/domain"
@@ -159,7 +160,7 @@ func (s sensitiveCommentSig) isLibrary(url string) bool {
 // (if it sets a threshold) the matched value clears the Shannon-entropy gate AND
 // no allowlist regex excuses it — gitleaks' own FP model, ported.
 func (s sensitiveCommentSig) scan(b []byte) (what, data string) {
-	lower := bytesToLowerASCII(b)
+	lower := strings.ToLower(string(b)) // lower the body ONCE, not per keyword
 	for _, rule := range s.secrets {
 		if !hasAnyKeyword(lower, rule.Keywords) {
 			continue // gitleaks keyword pre-filter (also a big perf win over 200+ regexes)
@@ -204,12 +205,12 @@ func allowed(m []byte, allow []*regexp.Regexp) bool {
 
 // hasAnyKeyword reports whether lowered contains any keyword (empty set ⇒ always,
 // for keyword-less rules whose format is self-identifying).
-func hasAnyKeyword(lowered []byte, keywords []string) bool {
+func hasAnyKeyword(lowered string, keywords []string) bool {
 	if len(keywords) == 0 {
 		return true
 	}
 	for _, k := range keywords {
-		if bytesContains(lowered, k) {
+		if strings.Contains(lowered, k) {
 			return true
 		}
 	}
@@ -241,10 +242,6 @@ func (ir InternalRules) match(b []byte) string {
 }
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
-
-func bytesContains(b []byte, sub string) bool { return strings.Contains(string(b), sub) }
-
-func bytesToLowerASCII(b []byte) []byte { return []byte(strings.ToLower(string(b))) }
 
 // ---- PS-010: .git exposure ----
 type gitExposureSig struct{}
@@ -327,9 +324,9 @@ func (envExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 // ---- PS-018: session id in URL ----
 // sessionInURLSig (PS-018) — config-driven (r16, ZAP InformationDisclosureInUrl):
 // a sensitive-named parameter (session/token/password/…) carrying a non-trivial
-// value in the URL query. Distilled ZAP param list; `token` substring covers
-// accessToken/access_token/id_token (human #3). A ≥6-char value guard avoids the
-// old bare `?sid=1` false positive.
+// value in the URL. Distilled ZAP param list. Names match by TOKEN, not substring,
+// so the `token` param covers accessToken/access_token (human #3) without firing on
+// benign `userType`/`passengers`. A ≥6-char value guard avoids the bare `?sid=1` FP.
 type sessionInURLSig struct {
 	params []string
 }
@@ -340,21 +337,85 @@ func (s sessionInURLSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 	if err != nil {
 		return nil, false, nil
 	}
-	for name, vals := range u.Query() {
-		lname := strings.ToLower(name)
-		for _, p := range s.params {
-			if !strings.Contains(lname, p) {
-				continue
-			}
-			for _, v := range vals {
-				if len(v) >= 6 {
-					return []domain.Finding{finding(cweSessionURL, ctx.Target.URL, domain.SevMedium,
-						withData("sensitive parameter in URL", snippet([]byte(name+"="+v))))}, false, nil
-				}
-			}
+	for _, kv := range urlParamPairs(u) {
+		if len(kv.value) < 6 {
+			continue // a trivial value is not a leaked session token
+		}
+		if s.matches(kv.name) {
+			return []domain.Finding{finding(cweSessionURL, ctx.Target.URL, domain.SevMedium,
+				withData("sensitive parameter in URL", snippet([]byte(kv.name+"="+kv.value))))}, false, nil
 		}
 	}
 	return nil, false, nil
+}
+
+// matches reports whether a parameter name carries a sensitive token. It compares by
+// TOKEN (name split on separators + camelCase), not substring: `access_token` /
+// `accessToken` fire on the `token` param, while `userType` / `passengers` /
+// `boarding_pass` do not (the old substring form false-positived on those).
+func (s sessionInURLSig) matches(name string) bool {
+	for _, tok := range paramTokens(name) {
+		if slices.Contains(s.params, tok) {
+			return true
+		}
+	}
+	return false
+}
+
+type urlKV struct{ name, value string }
+
+// urlParamPairs collects name=value pairs from BOTH the query string and the path's
+// matrix parameters (`/page;jsessionid=…`, the classic Java URL-rewriting form),
+// which url.Query() does not expose — dropping the latter was a PS-018 false-negative.
+func urlParamPairs(u *url.URL) []urlKV {
+	var out []urlKV
+	for name, vals := range u.Query() {
+		for _, v := range vals {
+			out = append(out, urlKV{name, v})
+		}
+	}
+	for _, seg := range strings.Split(u.EscapedPath(), "/") {
+		parts := strings.Split(seg, ";")
+		for _, mp := range parts[1:] { // parts[0] is the path element; the rest are matrix params
+			if name, val, ok := strings.Cut(mp, "="); ok {
+				if dv, err := url.QueryUnescape(val); err == nil {
+					val = dv
+				}
+				out = append(out, urlKV{name, val})
+			}
+		}
+	}
+	return out
+}
+
+// paramTokens splits a parameter name into lowercase tokens on non-alphanumeric
+// separators AND camelCase boundaries: `access_token`→[access token],
+// `accessToken`→[access token], `userType`→[user type].
+func paramTokens(name string) []string {
+	var tokens []string
+	var cur []rune
+	flush := func() {
+		if len(cur) > 0 {
+			tokens = append(tokens, strings.ToLower(string(cur)))
+			cur = cur[:0]
+		}
+	}
+	runes := []rune(name)
+	for i, r := range runes {
+		alnum := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+		if !alnum {
+			flush()
+			continue
+		}
+		if r >= 'A' && r <= 'Z' && i > 0 {
+			if p := runes[i-1]; p >= 'a' && p <= 'z' || p >= '0' && p <= '9' {
+				flush()
+			}
+		}
+		cur = append(cur, r)
+	}
+	flush()
+	return tokens
 }
 
 // ---- PS-022: crossdomain.xml permissive ----

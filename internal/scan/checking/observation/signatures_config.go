@@ -85,8 +85,7 @@ type secretsFile struct {
 	} `yaml:"rules"`
 }
 type urlSensitiveFile struct {
-	Params        []string `yaml:"params"`
-	ValuePatterns []string `yaml:"valuePatterns"`
+	Params []string `yaml:"params"`
 }
 type internalFile struct {
 	RFC1918      string `yaml:"rfc1918"`
