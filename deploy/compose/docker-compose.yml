@@ -62,7 +62,13 @@ services:
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     # /scratch is a writable tmpfs; TMPDIR=/scratch is already set in the image.
-    tmpfs: ["/scratch"]
+    # mode=1777 (sticky, world-writable) is REQUIRED: the container runs as the
+    # non-root uid 10001, but a bare tmpfs mounts root:root mode=0755 and shadows
+    # the image's `chown app:app /scratch`, so every probe that writes its output
+    # file under TMPDIR fails → the 6 wired probes report tool-failed. This is the
+    # compose analogue of the k8s worker's `fsGroup: 10001` on the /scratch emptyDir.
+    tmpfs:
+      - "/scratch:mode=1777"
 
 volumes:
   mongo-data:

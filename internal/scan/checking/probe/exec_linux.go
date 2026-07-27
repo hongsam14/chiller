@@ -20,6 +20,12 @@ import (
 // before Wait returns even if a grandchild still holds a stdout pipe open.
 func defaultExec(ctx context.Context, name string, env []string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	// Run in a writable working dir (TMPDIR = /scratch under the read-only rootfs).
+	// testssl.sh does NOT honour $TMPDIR: it creates its work dir at /tmp then falls
+	// back to $PWD, and with the default WORKDIR (/app, read-only) both fail →
+	// ERR_FCREATE → the probe reports tool-failed. Pointing $PWD at the writable
+	// scratch makes the fallback succeed. Harmless for the other tools.
+	cmd.Dir = os.TempDir()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process != nil {
