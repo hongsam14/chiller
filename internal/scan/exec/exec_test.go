@@ -63,6 +63,32 @@ func TestRun_AggregatesFindingsFailedNA(t *testing.T) {
 	}
 }
 
+// TestRun_WellKnown_ObservationOnly proves a well-known-synthesized item runs the
+// in-process observation signatures but NOT the URL-scoped probe adapters (r10,
+// finding 8): the probes must not be re-exec'd once per synthesized path.
+func TestRun_WellKnown_ObservationOnly(t *testing.T) {
+	obs := fakeChecker{id: "observation:CWE-538", scope: domain.URLScoped,
+		res: domain.CheckResult{Findings: []domain.Finding{{CWEs: []domain.CWE{"CWE-538"}, TargetURL: "u", SourceTool: "observation:CWE-538", Severity: domain.SevCritical}}}}
+	probe := fakeChecker{id: "probe:humble", scope: domain.URLScoped, err: errors.New("binary spawned")}
+	e := New([]domain.Checker{obs, probe}, fakeFetcher{entry: &domain.HAREntry{Status: 200}}, noDisc{}, openGate{})
+
+	// A well-known item: only the observation checker runs.
+	wk := e.Run(context.Background(), domain.WorkItem{ID: "wk", ScanID: "s", Scope: domain.URLScoped, WellKnown: true, Target: domain.Target{URL: "https://h/.env"}}, fetch.NewInMemoryCache())
+	if len(wk.Findings) != 1 {
+		t.Errorf("well-known findings = %d, want 1 (observation ran)", len(wk.Findings))
+	}
+	if len(wk.Failed) != 0 {
+		t.Errorf("well-known failed = %v, want none (probe must NOT run on a well-known item)", wk.Failed)
+	}
+
+	// A normal URL item: the probe DOES run (and here fails), proving the filter is
+	// specific to well-known items, not a global change.
+	normal := e.Run(context.Background(), domain.WorkItem{ID: "u", ScanID: "s", Scope: domain.URLScoped, Target: domain.Target{URL: "https://h/"}}, fetch.NewInMemoryCache())
+	if len(normal.Failed) != 1 || normal.Failed[0] != "probe:humble" {
+		t.Errorf("normal item failed = %v, want [probe:humble] (probe runs on submitted URLs)", normal.Failed)
+	}
+}
+
 func TestRun_FetchFailure_AllUrlScopedToolFailed(t *testing.T) {
 	checkers := []domain.Checker{
 		fakeChecker{id: "a", scope: domain.URLScoped},

@@ -5,6 +5,33 @@
 
 The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Below is what MUST happen before the durable backends run in production, and the honest limitations carried forward.
 
+## Increment log — Observation well-known provider (r10, 2026-07-24)
+
+> **CLOSED (green, approved 2026-07-24).** Wired the host-scoped **well-known-path GET provider**: for each
+> distinct approved host the fan-out synthesizes URL-scoped items for `/robots.txt`, `/.env`, `/.git/config`,
+> `/.git/HEAD`, `/crossdomain.xml`, a pinned backup-name list, and common admin surfaces, and feeds each
+> response to the owning observation signature. This closes the **6-item false-clean/N-A gap** (PS-008 robots ·
+> PS-011 .env · PS-010 .git · PS-022 crossdomain · PS-012 backup · PS-013 admin) that reported "checked, no
+> issue" without ever requesting the artifact. 5 signature dictionaries were deepened (FN-broaden + FP-narrow),
+> corpus-asserted. A **workflow code review (high, 10 findings)** followed and **all 10 were fixed** before
+> approval — see below and `construction/build-and-test/wellknown-build-and-test-summary.md`.
+>
+> **New operator controls (SR-1-style bound on the sweep — it sits outside `MaxURLs` by design, Q6=A):**
+> - `ScanOptions.DisableWellKnown` (bool) — **off-switch**; the sweep is **on by default** (Q3=A: approved
+>   hosts, approval gate + per-host rate honored).
+> - `ScanOptions.MaxWellKnownHosts` (int, **default 50**) — caps distinct hosts swept; hosts beyond the cap
+>   are **skipped and logged** (never silently dropped). Tune down for very large multi-host scans, or when a
+>   target's WAF/IPS thresholds on `.git`/`.env` probing are a concern.
+>
+> **Operational notes:** the sweep shares the per-host rate budget, so expect **+~3s/host** wall-clock
+> (intended). Engine-synthesized well-known items run the **observation signatures only** — the external
+> probe binaries are NOT re-exec'd per synthesized path (an amplification the review caught and removed).
+> The honest-accounting invariant is preserved: skipped probes are never credited as Checked.
+>
+> **Carried forward (honest, not in r10):** PS-009/018/023 dictionary deepening (C1=A, next todo);
+> P0 transport correctness — `br`/`zstd` bodies undecoded + 512KB body cap (C3=A) — can still nullify
+> even a wired check on a proxy/probe path that advertises those encodings.
+
 ## Mandatory before production (blocking)
 
 > **#0 — MOSTLY CLOSED 2026-07-14 (probe-wiring increment r7), one Docker gate remains.**
@@ -41,6 +68,12 @@ The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Belo
 1. ~~Split-topology mid-run recovery is not automatic.~~ **RESOLVED 2026-07-11 (ledger-lease increment).** Items carry a lease (owner + expiry, heartbeat-refreshed); a lease-safe periodic sweep (manager + all, `ReclaimExpired`) reclaims only expired-lease inflight items, so a dead worker's items are recovered mid-run without clobbering a live worker's. The dashboard scan list (`/api/introspect/scans`) is also live. Safe-reclaim invariant (at most one recorded outcome per item) proven by a stateful PBT. See `construction/platform/code/lease-business-logic-summary.md`.
 2. ~~Probe adapters are stubs (`argv` nil).~~ **RESOLVED 6/7 2026-07-14 (increment r7).** Six probes wired (argv + JSON parser + bundled binary + process-group kill); changeme (PS-019) deferred (F5). Remaining: the in-image `probe-integration` job must run once on Docker to validate the hand-authored parser schemas against real output (#0a) and confirm the tool version pins (#0b). See `construction/scan/code/probe-business-logic-summary.md`.
 3. **Not in this increment** (infra-plan #3–#6): ProgressReporter→OTel, Authorizer→OIDC/mTLS, ResponseCache→Valkey, FindingsStore→Mongo. The shared-instance placement for #5/#6 is pre-decided in `construction/shared-infrastructure.md`.
+3b. **Observation dictionary/transport (r10 carried, honest):** the well-known provider now delivers the
+   artifact for 6 items, but (a) **PS-009/018/023 dictionaries are still shallow** (C1=A deferred), and (b)
+   **`br`/`zstd` response bodies are not decoded and bodies are capped at 512KB** (P0, C3=A) — on a transport
+   path that advertises those encodings every body regex matches nothing (a silent global false-negative),
+   which can nullify even the newly-wired well-known checks. Fix before relying on passive body signatures
+   behind a `br`/`zstd`-emitting proxy.
 4. **Browser transport hardening** (infra-plan §2): Chromium provisioning, HTTPS CONNECT + MITM CA, session auto-refresh.
 
 ## Suggested next tasks (pick one)

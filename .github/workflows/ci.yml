@@ -221,6 +221,19 @@ jobs:
             -e PROBE_BADSSL_HOST=rc4.badssl.com \
             chiller:ci -test.v -test.run 'TestIntegration_(URLProbes|FixtureProbes)'
 
+      - name: prove well-known observation findings against the fixture
+        # Run the orchestrator well-known sweep (r10) against vulnweb from a
+        # container on the fixture network. Target the container IP, not the
+        # compose name: the scan Fetcher's own DNS resolver does not see Docker's
+        # embedded DNS (a real DNS name resolves fine).
+        run: |
+          IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' chiller-vuln-target-vulnweb-1)
+          docker run --rm --network chiller-vuln-target_vulnnet \
+            -v "$PWD":/src -w /src -v "$(go env GOMODCACHE)":/go/pkg/mod \
+            -e WELLKNOWN_FIXTURE_URL=http://$IP/ -e GOFLAGS=-buildvcs=false \
+            golang:1.26.5 \
+            go test -tags integration -run TestIntegration_WellKnown_Fixture ./test/ -v
+
       - name: tear down fixture
         if: always()
         run: docker compose -f test/fixtures/vuln-target/docker-compose.yml down -v
