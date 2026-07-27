@@ -18,6 +18,12 @@ type WorkItem struct {
 	// so it round-trips through the bson ledger and json queue payload unchanged;
 	// old items decode it as false (a normal, all-checkers URL item).
 	WellKnown bool `bson:"wellKnown,omitempty" json:"wellKnown,omitempty"`
+	// WellKnownCWE is the CWE of the ONE signature that owns this synthesized
+	// well-known path (r16, FR-6): the executor runs only that observation signature
+	// on the item, not the whole set, so path-agnostic scanners (PS-009/023/cookies)
+	// no longer fire ~14× per host on the sweep. Set together with WellKnown by the
+	// fan-out (the only producer). Empty on old items → falls back to WellKnown.
+	WellKnownCWE CWE `bson:"wellKnownCwe,omitempty" json:"wellKnownCwe,omitempty"`
 }
 
 // WorkItemOutcome reports what a WorkItem produced. Failed lists the checkers
