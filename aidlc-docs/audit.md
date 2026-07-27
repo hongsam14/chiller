@@ -1353,3 +1353,10 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: CONSTRUCTION - per-request framework selection (r14).
 
 ---
+## Report 증적 개선: 실제 매칭 데이터 (r15)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "report에 증적 자료가 없음. sensitive token을 모니터링했으면 실제 데이터와 함께 보여줘야 사람/AI가 판단."
+**AI Response**: 관측 시그니처가 증적에 일반 라벨 대신 실제 매칭 데이터를 담도록 개선. 헬퍼 snippet()(single-line·rune-safe·maxEvidenceLen=200 bounded) + matchContext()(매칭 주변 window) + withData()(라벨 — 실데이터). 적용: PS-009(민감토큰: 매칭 토큰+맥락), PS-011(.env: KEY=value 실값), PS-010(.git: config/HEAD 내용), PS-008(robots: Disallow 라인), PS-022(crossdomain: allow-access 라인). fire/no-fire 로직 불변(matchContext!=""≡.Match). 증적은 이미 암호화저장(SECURITY-01)·bounded(FR-12)라 실데이터 부합. 신규 TestEvidence_CarriesRealMatchedData + TestEvidence_Bounded. 라이브(kbland.kr) 검증: 실데이터가 즉시 PS-009를 jQuery 압축코드 오탐(password:!0)으로 판별 가능하게 함 — 기능 목적 달성 + 별건 탐지품질 이슈(PS-009 secret 정규식 minified JS FP) 노출. 게이트 green(23pkg, gosec 0).
+**Context**: CONSTRUCTION - report evidence real-data (r15).
+
+---
