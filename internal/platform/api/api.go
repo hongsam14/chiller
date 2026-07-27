@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/config"
 	"github.com/hongsam14/chiller/internal/platform"
 	"github.com/hongsam14/chiller/internal/scan/ingest"
 )
@@ -58,6 +59,10 @@ type Handler struct {
 	store     platform.TaskStore // for the scan list (nil → endpoint reports unavailable)
 	health    []HealthCheck
 	persist   PersistenceStats // for /api/introspect/persistence
+	// compliance report view (customer-facing) — presentation metadata joined into
+	// the enriched report. Empty maps degrade gracefully (bare PS-IDs, no CWE badges).
+	catalog  map[domain.PSID]config.ItemMeta
+	itemCWEs map[domain.PSID][]domain.CWE
 }
 
 // PersistenceStats is what the persistence introspection endpoint reports. It is
@@ -130,6 +135,18 @@ func WithScanStore(store platform.TaskStore) Option {
 	return func(h *Handler) { h.store = store }
 }
 
+// WithCatalog supplies the item title/description/category metadata for the
+// customer compliance report (GET /api/report/{id} + /report). Presentation only.
+func WithCatalog(catalog map[domain.PSID]config.ItemMeta) Option {
+	return func(h *Handler) { h.catalog = catalog }
+}
+
+// WithItemCWEs supplies each item's canonical CWE(s) for the report's standard
+// badges, derived from the mapping table (no config duplication).
+func WithItemCWEs(cwes map[domain.PSID][]domain.CWE) Option {
+	return func(h *Handler) { h.itemCWEs = cwes }
+}
+
 // scanRequestDTO is the wire shape for POST /scans (JSON-tagged, so the scan
 // unit's ingest structs stay free of transport concerns).
 type scanRequestDTO struct {
@@ -174,6 +191,10 @@ func New(authz platform.Authorizer, orch platform.Orchestrator, opts ...Option) 
 	h.mux.HandleFunc("GET /api/introspect/scans", h.guard(h.introspectScans))
 	h.mux.HandleFunc("GET /api/introspect/persistence", h.guard(h.introspectPersistence))
 	h.mux.HandleFunc("GET /ui", h.serveUI)
+	// Customer-facing compliance report: an authz'd enriched JSON view + a static
+	// HTML shell (same no-data/strict-headers pattern as /ui).
+	h.mux.HandleFunc("GET /api/report/{id}", h.guard(h.getComplianceReport))
+	h.mux.HandleFunc("GET /report", h.serveReportUI)
 	return h
 }
 

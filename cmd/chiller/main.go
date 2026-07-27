@@ -250,11 +250,27 @@ func serveAPI(ctx context.Context, f flags, orch *orchestrator.Orchestrator, be 
 	if token == "" {
 		return fmt.Errorf("role %q needs a token via --token or CHILLER_TOKEN (fail-closed: an empty token denies all)", f.role)
 	}
+	// Presentation metadata for the customer compliance report (/report). Both are
+	// best-effort: a missing catalog/mapping degrades the report to bare PS-IDs with
+	// no CWE badges rather than failing the API — the accounting is unaffected.
+	catalog, err := fconfig.LoadCatalogFile(f.coveragePath)
+	if err != nil {
+		log.Printf("WARNING: catalog load (%s): %v — compliance report shows bare PS-IDs", f.coveragePath, err)
+	}
+	var itemCWEs map[domain.PSID][]domain.CWE
+	if mt, merr := fconfig.LoadMappingFile(f.mappingPath); merr == nil {
+		itemCWEs = mt.ItemCWEs(domain.FrameworkKISA)
+	} else {
+		log.Printf("WARNING: mapping load for CWE badges (%s): %v", f.mappingPath, merr)
+	}
+
 	h := api.New(api.NewBearerAuthorizer(token), orch,
 		api.WithHealthChecks(health...),
 		api.WithIntrospection(be.queue),
 		api.WithScanStore(be.store),
 		api.WithPersistenceStats(persistenceStats{metrics: metrics, stats: be.stats, retry: be.retry}),
+		api.WithCatalog(catalog),
+		api.WithItemCWEs(itemCWEs),
 	)
 	// ReadHeaderTimeout bounds header-read time so a client that dribbles headers
 	// cannot hold a connection open indefinitely (Slowloris). 10s is generous
