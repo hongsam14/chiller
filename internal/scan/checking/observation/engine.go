@@ -65,15 +65,15 @@ func New(rules Rules) []Signature {
 		plaintextLoginSig{}, // PS-003
 		robotsSensitiveSig{},
 		sensitiveCommentSig{secrets: rules.Secrets, libPaths: rules.LibraryPaths, internal: rules.Internal}, // PS-009
-		gitExposureSig{},   // PS-010
-		envExposureSig{},   // PS-011
-		backupFileSig{},    // PS-012
-		adminPageSig{apiDocs: rules.APIDocs},   // PS-013
+		gitExposureSig{},                         // PS-010
+		envExposureSig{},                         // PS-011
+		backupFileSig{},                          // PS-012
+		adminPageSig{apiDocs: rules.APIDocs},     // PS-013
 		sessionInURLSig{params: rules.URLParams}, // PS-018
-		crossdomainSig{},    // PS-022
-		captchaAbsenceSig{}, // PS-023
-		cookieSecureSig{},   // PS-015
-		cookieHTTPOnlySig{}, // PS-016
-		cookieSameSiteSig{}, // PS-017
+		crossdomainSig{},                         // PS-022
+		captchaAbsenceSig{},                      // PS-023
+		cookieSecureSig{},                        // PS-015
+		cookieHTTPOnlySig{},                      // PS-016
+		cookieSameSiteSig{},                      // PS-017
 	}
 }

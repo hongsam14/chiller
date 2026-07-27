@@ -143,11 +143,11 @@ func TestFanOut_WellKnownSynthesis(t *testing.T) {
 	wk := map[string]map[string]bool{} // host → set of well-known paths seen
 	for _, it := range items {
 		for _, p := range observation.WellKnownPaths() {
-			if it.Target.URL == it.Target.Scheme+"://"+it.Target.Host+p {
+			if it.Target.URL == it.Target.Scheme+"://"+it.Target.Host+p.Path {
 				if wk[it.Target.Host] == nil {
 					wk[it.Target.Host] = map[string]bool{}
 				}
-				wk[it.Target.Host][p] = true
+				wk[it.Target.Host][p.Path] = true
 			}
 		}
 	}
@@ -183,6 +183,38 @@ func TestFanOut_WellKnown_MaxURLsIndependent(t *testing.T) {
 	// 1 submitted + a full well-known sweep — the MaxURLs=1 does not clip the sweep.
 	if want := 1 + len(observation.WellKnownPaths()); urlItems != want {
 		t.Errorf("url items = %d, want %d — well-known must not be clipped by MaxURLs", urlItems, want)
+	}
+}
+
+// TestRanCheckers_WellKnownCWE_MirrorsExec pins the honesty invariant for r16
+// (FR-6): the fold's ranCheckers MUST attribute a WellKnownCWE item to ONLY the
+// owning observation signature — the same single checker exec ran. If the fold
+// credited the whole observation set (or the probes), a signature that never ran
+// on that path would be recorded as "checked", corrupting the compliance ledger.
+func TestRanCheckers_WellKnownCWE_MirrorsExec(t *testing.T) {
+	o := &Orchestrator{urlScoped: observation.Checkers(observation.Default())}
+
+	// Owning-CWE item → exactly the one owning checker.
+	ran := o.ranCheckers(domain.WorkItem{Scope: domain.URLScoped, WellKnown: true, WellKnownCWE: "CWE-306"})
+	if len(ran) != 1 || ran[0].ID() != "observation:CWE-306" {
+		var got []domain.CheckerID
+		for _, c := range ran {
+			got = append(got, c.ID())
+		}
+		t.Fatalf("WellKnownCWE fold ran = %v, want [observation:CWE-306] only", got)
+	}
+
+	// A well-known item with an unknown owner attributes nothing (fail-safe: never
+	// over-credit) rather than falling through to the full set.
+	if ran := o.ranCheckers(domain.WorkItem{Scope: domain.URLScoped, WellKnown: true, WellKnownCWE: "CWE-000"}); len(ran) != 0 {
+		t.Errorf("unknown owning CWE must credit no checker, got %d", len(ran))
+	}
+
+	// Legacy well-known item (no WellKnownCWE) keeps the r10 observation-only set —
+	// backward compatibility for items already on the queue across an upgrade.
+	legacy := o.ranCheckers(domain.WorkItem{Scope: domain.URLScoped, WellKnown: true})
+	if len(legacy) != len(observation.Default()) {
+		t.Errorf("legacy well-known fold = %d checkers, want the full observation set %d", len(legacy), len(observation.Default()))
 	}
 }
 
