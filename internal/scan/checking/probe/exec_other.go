@@ -15,6 +15,9 @@ import (
 // exists only to keep the package buildable on developer machines.
 func defaultExec(ctx context.Context, name string, env []string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	// Writable working dir (TMPDIR): testssl.sh falls back to $PWD for its work dir
+	// and the read-only rootfs deploys have a read-only WORKDIR. See exec_linux.go.
+	cmd.Dir = os.TempDir()
 	if len(env) > 0 {
 		cmd.Env = append(os.Environ(), env...)
 	}
