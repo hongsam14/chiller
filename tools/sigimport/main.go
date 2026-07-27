@@ -129,7 +129,10 @@ func genSecrets() error {
 	}
 	var skipped []string
 	for _, r := range cfg.Rules {
-		if !re2ok(r.Regex) {
+		// Path/file-name rules (empty content regex, e.g. pkcs12-file) match by
+		// filename in gitleaks — inapplicable to our content scan, and an empty
+		// regex would match everything. Skip (recorded), don't emit.
+		if strings.TrimSpace(r.Regex) == "" || !re2ok(r.Regex) {
 			skipped = append(skipped, r.ID)
 			continue
 		}

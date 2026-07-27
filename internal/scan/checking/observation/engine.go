@@ -48,24 +48,32 @@ func Checkers(sigs []Signature) []domain.Checker {
 	return out
 }
 
-// Default returns the 10 observation signatures (r5). Anchors are tight; the
-// authoritative CWE↔PS-ID rows are pinned at Functional Design (C-5) — several
-// anchors ship real, the harder ones (URL-context-dependent) as safe stubs that
-// still own their CWE so coverage stays complete.
-func Default() []Signature {
+// New returns the 13 observation signatures with the config-driven ones (PS-009
+// secrets/internal, PS-018 URL-sensitive, PS-013 api-docs) wired to the distilled
+// rules (r16). Every signature OWNS its CWE regardless of rule count — so an empty
+// Rules still yields a complete owner set (the 26-partition/boot gate is
+// rule-independent); the rules only decide WHAT each detects. Load rules via
+// LoadRules and pass them here.
+// Default returns the signature set with EMPTY rules — every signature present and
+// owning its CWE, but the config-driven detections (PS-009/018/013) inert. It is
+// for ownership-only contexts (the boot gate / registry, which need the CWE→PS-ID
+// partition, not detection). Runtime detection loads real rules via LoadRules + New.
+func Default() []Signature { return New(Rules{}) }
+
+func New(rules Rules) []Signature {
 	return []Signature{
-		plaintextLoginSig{},   // PS-003
-		robotsSensitiveSig{},  // PS-008 (stub anchor)
-		sensitiveCommentSig{}, // PS-009
-		gitExposureSig{},      // PS-010
-		envExposureSig{},      // PS-011
-		backupFileSig{},       // PS-012 (stub anchor)
-		adminPageSig{},        // PS-013 (stub anchor)
-		sessionInURLSig{},     // PS-018
-		crossdomainSig{},      // PS-022
-		captchaAbsenceSig{},   // PS-023 (stub anchor)
-		cookieSecureSig{},     // PS-015 (moved from humble, #0d)
-		cookieHTTPOnlySig{},   // PS-016 (moved from humble, #0d)
-		cookieSameSiteSig{},   // PS-017 (moved from humble, #0d)
+		plaintextLoginSig{}, // PS-003
+		robotsSensitiveSig{},
+		sensitiveCommentSig{secrets: rules.Secrets, libPaths: rules.LibraryPaths, internal: rules.Internal}, // PS-009
+		gitExposureSig{},   // PS-010
+		envExposureSig{},   // PS-011
+		backupFileSig{},    // PS-012
+		adminPageSig{apiDocs: rules.APIDocs},   // PS-013
+		sessionInURLSig{params: rules.URLParams}, // PS-018
+		crossdomainSig{},    // PS-022
+		captchaAbsenceSig{}, // PS-023
+		cookieSecureSig{},   // PS-015
+		cookieHTTPOnlySig{}, // PS-016
+		cookieSameSiteSig{}, // PS-017
 	}
 }

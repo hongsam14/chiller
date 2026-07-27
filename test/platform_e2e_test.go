@@ -54,7 +54,12 @@ type harnessOpts struct {
 }
 
 func defaultCheckers() []domain.Checker {
-	checkers := observation.Checkers(observation.Default())
+	// Load the REAL distilled signature rules so PS-009/018/013 detect like production.
+	rules, err := observation.LoadRules("../configs/signatures")
+	if err != nil {
+		panic("e2e: load signature rules: " + err.Error())
+	}
+	checkers := observation.Checkers(observation.New(rules))
 	for _, p := range probe.Default() {
 		checkers = append(checkers, p)
 	}
@@ -145,8 +150,8 @@ func (h *harness) waitState(t *testing.T, id domain.ScanID, want platform.ScanSt
 // 26-item coverage partition and a report, with a real finding surfaced.
 func TestE2E_SubmitToReport_26Partition(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// The HTML comment trips the sensitive-comment signature (PS-009).
-		_, _ = w.Write([]byte(`<html><!-- api_key: AKIAEXAMPLE1234 --><body>hi</body></html>`))
+		// The HTML comment carries a real-looking JWT → trips PS-009 (gitleaks jwt rule).
+		_, _ = w.Write([]byte(`<html><!-- token eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoiYWRtaW4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c --><body>hi</body></html>`))
 	}))
 	defer target.Close()
 

@@ -110,35 +110,141 @@ func (plaintextLoginSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 }
 
 // ---- PS-009: sensitive info in comments/source (HTML + JS) ----
-type sensitiveCommentSig struct{}
+// Config-driven (r16): gitleaks-distilled secret rules (entropy-gated) + internal/
+// infra disclosure, over HTML comments and delivered JS only. libPaths skips known
+// minified libraries (jquery/bootstrap/…) so a library's `password:!0` never fires.
+type sensitiveCommentSig struct {
+	secrets  []SecretRule
+	libPaths []*regexp.Regexp
+	internal InternalRules
+}
 
-var (
-	secretAnchor = regexp.MustCompile(`(?i)(password\s*[=:]|api[_-]?key|secret[_-]?key|aws_secret|BEGIN [A-Z ]*PRIVATE KEY|todo:.*(fixme|hack)|internal[_-]?ip)`)
-	htmlComment  = regexp.MustCompile(`(?s)<!--(.*?)-->`)
-)
+var htmlComment = regexp.MustCompile(`(?s)<!--(.*?)-->`)
 
 func (sensitiveCommentSig) CWE() domain.CWE { return cweComment }
-func (sensitiveCommentSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
-	// Scan only HTML *comments* and delivered JS source — NOT the visible HTML
-	// body, whose ordinary text (e.g. a "Password:" label) would otherwise trip
-	// secretAnchor on every login page (false positive).
+func (s sensitiveCommentSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
+	// Scan only HTML *comments* and delivered JS source — NOT the visible HTML body
+	// (whose ordinary "Password:" prose would false-positive on every login page).
 	if ctx.Response != nil {
 		for _, c := range htmlComment.FindAllSubmatch(ctx.Response.Body, -1) {
-			if data := matchContext(c[1], secretAnchor, 32); data != "" {
-				return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, withData("sensitive token in HTML comment", data))}, false, nil
+			if what, data := s.scan(c[1]); data != "" {
+				return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, withData(what+" in HTML comment", data))}, false, nil
 			}
 		}
 	}
 	for _, js := range ctx.DiscoveredJS {
-		if js == nil {
-			continue
+		if js == nil || s.isLibrary(js.URL) {
+			continue // skip minified libraries (gitleaks global allowlist)
 		}
-		if data := matchContext(js.Body, secretAnchor, 32); data != "" {
-			return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, withData("sensitive token in client-delivered JS source", data))}, false, nil
+		if what, data := s.scan(js.Body); data != "" {
+			return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, withData(what+" in client-delivered JS source", data))}, false, nil
 		}
 	}
 	return nil, false, nil
 }
+
+// isLibrary reports whether an asset URL matches a distilled library path (jquery/
+// bootstrap/swagger-ui/node_modules/…) that gitleaks excludes from secret scanning.
+func (s sensitiveCommentSig) isLibrary(url string) bool {
+	for _, re := range s.libPaths {
+		if re.MatchString(url) {
+			return true
+		}
+	}
+	return false
+}
+
+// scan returns (what, evidence) for the first secret or internal-disclosure match
+// in b, or ("","") when clean. A secret rule fires only when its regex matches AND
+// (if it sets a threshold) the matched value clears the Shannon-entropy gate AND
+// no allowlist regex excuses it — gitleaks' own FP model, ported.
+func (s sensitiveCommentSig) scan(b []byte) (what, data string) {
+	lower := bytesToLowerASCII(b)
+	for _, rule := range s.secrets {
+		if !hasAnyKeyword(lower, rule.Keywords) {
+			continue // gitleaks keyword pre-filter (also a big perf win over 200+ regexes)
+		}
+		loc := rule.Re.FindIndex(b)
+		if loc == nil {
+			continue
+		}
+		m := b[loc[0]:loc[1]]
+		if rule.MinEntropy > 0 && shannon(string(m)) < rule.MinEntropy {
+			continue // low-entropy → minified-JS literal / ordinary word, not a secret
+		}
+		if allowed(m, rule.Allow) {
+			continue
+		}
+		start := loc[0] - 24
+		if start < 0 {
+			start = 0
+		}
+		end := loc[1] + 24
+		if end > len(b) {
+			end = len(b)
+		}
+		return "secret (" + rule.Name + ")", snippet(b[start:end])
+	}
+	if d := s.internal.match(b); d != "" {
+		return "internal/infra disclosure", d
+	}
+	return "", ""
+}
+
+// allowed reports whether any allowlist regex matches the finding (a documentation
+// example like AKIAIOSFODNN7EXAMPLE), excusing it.
+func allowed(m []byte, allow []*regexp.Regexp) bool {
+	for _, re := range allow {
+		if re.Match(m) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasAnyKeyword reports whether lowered contains any keyword (empty set ⇒ always,
+// for keyword-less rules whose format is self-identifying).
+func hasAnyKeyword(lowered []byte, keywords []string) bool {
+	if len(keywords) == 0 {
+		return true
+	}
+	for _, k := range keywords {
+		if bytesContains(lowered, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// match returns internal-disclosure evidence (RFC1918 IP / EC2 host / non-prod
+// host), or "". The RFC1918 hit gets a Go-side boundary guard replacing ZAP's PCRE
+// lookaround: reject a match that is part of a longer dotted number (a version).
+func (ir InternalRules) match(b []byte) string {
+	if ir.RFC1918 != nil {
+		if loc := ir.RFC1918.FindIndex(b); loc != nil {
+			before := loc[0] > 0 && (b[loc[0]-1] == '.' || isDigit(b[loc[0]-1]))
+			after := loc[1] < len(b) && (b[loc[1]] == '.' || isDigit(b[loc[1]]))
+			if !before && !after {
+				return snippet(b[loc[0]:loc[1]])
+			}
+		}
+	}
+	for _, re := range []*regexp.Regexp{ir.EC2Host, ir.NonProdHosts} {
+		if re == nil {
+			continue
+		}
+		if loc := re.FindIndex(b); loc != nil {
+			return snippet(b[loc[0]:loc[1]])
+		}
+	}
+	return ""
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+func bytesContains(b []byte, sub string) bool { return strings.Contains(string(b), sub) }
+
+func bytesToLowerASCII(b []byte) []byte { return []byte(strings.ToLower(string(b))) }
 
 // ---- PS-010: .git exposure ----
 type gitExposureSig struct{}
@@ -219,14 +325,34 @@ func (envExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 }
 
 // ---- PS-018: session id in URL ----
-type sessionInURLSig struct{}
-
-var sessionInURL = regexp.MustCompile(`(?i)[?&/;](jsessionid|phpsessid|sid|sessionid|session_id)=`)
+// sessionInURLSig (PS-018) — config-driven (r16, ZAP InformationDisclosureInUrl):
+// a sensitive-named parameter (session/token/password/…) carrying a non-trivial
+// value in the URL query. Distilled ZAP param list; `token` substring covers
+// accessToken/access_token/id_token (human #3). A ≥6-char value guard avoids the
+// old bare `?sid=1` false positive.
+type sessionInURLSig struct {
+	params []string
+}
 
 func (sessionInURLSig) CWE() domain.CWE { return cweSessionURL }
-func (sessionInURLSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
-	if sessionInURL.MatchString(ctx.Target.URL) {
-		return []domain.Finding{finding(cweSessionURL, ctx.Target.URL, domain.SevMedium, "session identifier in URL")}, false, nil
+func (s sessionInURLSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
+	u, err := url.Parse(ctx.Target.URL)
+	if err != nil {
+		return nil, false, nil
+	}
+	for name, vals := range u.Query() {
+		lname := strings.ToLower(name)
+		for _, p := range s.params {
+			if !strings.Contains(lname, p) {
+				continue
+			}
+			for _, v := range vals {
+				if len(v) >= 6 {
+					return []domain.Finding{finding(cweSessionURL, ctx.Target.URL, domain.SevMedium,
+						withData("sensitive parameter in URL", snippet([]byte(name+"="+v))))}, false, nil
+				}
+			}
+		}
 	}
 	return nil, false, nil
 }
@@ -284,8 +410,8 @@ func (backupFileSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, erro
 	return nil, false, nil
 }
 
-// ---- PS-013: admin page publicly accessible ----
-type adminPageSig struct{}
+// ---- PS-013: admin page publicly accessible (+ exposed API docs, r16) ----
+type adminPageSig struct{ apiDocs APIDocRules }
 
 // adminPath is broadened (r10 FN) to the common admin surfaces.
 var adminPath = regexp.MustCompile(`(?i)/(admin|administrator|administration|manage|manager/html|wp-admin|phpmyadmin|dashboard|backend)(/|$)`)
@@ -316,12 +442,21 @@ var loginMarker = regexp.MustCompile(`(?i)(` +
 	`)`)
 
 func (adminPageSig) CWE() domain.CWE { return cweAdmin }
-func (adminPageSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
+func (s adminPageSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
 	if ctx.Response == nil {
 		return nil, false, nil
 	}
-	if !adminPath.MatchString(pathOf(ctx.Target.URL)) {
-		return nil, true, nil // not an admin path → N/A for this target
+	path := pathOf(ctx.Target.URL)
+	// FR-9 (r16): an exposed API-documentation surface (nuclei-distilled path +
+	// body marker) is a management-surface exposure — same owning CWE (PS-013).
+	// The body marker avoids the path-only false positive a soft-404 would cause.
+	if ctx.Response.Status == 200 {
+		if data := s.apiDocs.match(path, ctx.Response.Body); data != "" {
+			return []domain.Finding{finding(cweAdmin, ctx.Target.URL, domain.SevMedium, withData("exposed API documentation", data))}, false, nil
+		}
+	}
+	if !adminPath.MatchString(path) {
+		return nil, true, nil // not an admin/api-doc path → N/A for this target
 	}
 	// Public access = 200, an actual admin interface in the body, no login form,
 	// and no login/SPA marker. The positive admin-content requirement is what stops
