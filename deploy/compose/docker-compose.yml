@@ -51,7 +51,9 @@ services:
       - "--queue=valkey"
       - "--findings-store=mongo"
       - "--cache=valkey"
-      - "--token=dev-token-change-me"
+      # No --token here: the Bearer token comes from CHILLER_TOKEN in the
+      # gitignored .env (env wins over the flag). Keeping a real token off the
+      # committed command line is the point of the CHILLER_TOKEN guard above.
     ports: ["8080:8080"]
     # Hardening parity with deploy/k8s (NFR-P4): read-only root FS + drop caps +
     # no privilege escalation. Probe CLIs get an ephemeral writable /scratch

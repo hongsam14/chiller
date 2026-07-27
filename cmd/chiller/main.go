@@ -66,7 +66,7 @@ func main() {
 	var f flags
 	flag.StringVar(&f.role, "role", "all", "role: all|manager|worker|proxy")
 	flag.StringVar(&f.addr, "addr", "127.0.0.1:8080", "ScanAPI listen address")
-	flag.StringVar(&f.token, "token", "", "static Bearer token (required for API roles)")
+	flag.StringVar(&f.token, "token", "", "static Bearer token (or env CHILLER_TOKEN, which wins); required for API roles")
 	flag.StringVar(&f.mappingPath, "mapping", "configs/mappings/kisa.yaml", "CWE→framework mapping file")
 	flag.StringVar(&f.coveragePath, "coverage", "configs/coverage/kisa.yaml", "coverage spec file")
 	flag.StringVar(&f.store, "store", "mem", "task store backend: mem|mongo")
@@ -243,10 +243,14 @@ func (p persistenceStats) PersistenceSnapshot() api.PersistenceSnapshot {
 }
 
 func serveAPI(ctx context.Context, f flags, orch *orchestrator.Orchestrator, be backends, metrics *platform.Metrics, health []api.HealthCheck) error {
-	if f.token == "" {
-		return fmt.Errorf("role %q needs --token (fail-closed: an empty token denies all)", f.role)
+	// The token is a secret, so env wins over the flag (same precedence as the
+	// Mongo/Valkey secrets above) — a committed compose/k8s command line then need
+	// not carry the real token; it comes from CHILLER_TOKEN in the gitignored .env.
+	token := firstNonEmpty(os.Getenv("CHILLER_TOKEN"), f.token)
+	if token == "" {
+		return fmt.Errorf("role %q needs a token via --token or CHILLER_TOKEN (fail-closed: an empty token denies all)", f.role)
 	}
-	h := api.New(api.NewBearerAuthorizer(f.token), orch,
+	h := api.New(api.NewBearerAuthorizer(token), orch,
 		api.WithHealthChecks(health...),
 		api.WithIntrospection(be.queue),
 		api.WithScanStore(be.store),
