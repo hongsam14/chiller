@@ -1339,3 +1339,10 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: CONSTRUCTION - FSEC framework wiring (r12).
 
 ---
+## UI: 취약점 세부정보 드릴다운 + --framework all 이슈 (r13)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "구현 방식 확인했으니 --framework all은 이슈로 남기기. report에서 취약점 발견 시 세부정보 확인하고 싶음."
+**AI Response**: (1) GitHub issue #19 생성 — --framework all(다중 프레임워크 회계). 현재 도구는 프레임워크 무관하게 전부 실행되고 findings는 CWE 기준, 프레임워크는 회계 렌즈일 뿐임을 정리; 남은 건 Coverage 다중 파티션. (2) 컴플라이언스 리포트에 취약점 드릴다운: report DTO에 findingDTO(targetUrl/sourceTool/severity/cwes/evidence) + reportItemDTO.Details 추가, complianceReportDTO.Framework 추가(배지·헤더가 KISA 하드코딩 → 동적). UI: 취약 항목 결과칩에 "▶ 상세 N" 토글 → 펼치면 finding별 심각도·도구·CWE·대상URL·증적 스니펫 표시. 실 kbland.kr 스캔 검증(PS-001 humble HSTS, PS-009 12건 등 세부 표시). 게이트 green(build/vet/gofmt/arch-check/race 23pkg/gosec 0). 관찰(별건): PS-009가 well-known 12경로에서 동일 JS 증적으로 12회 발화 — dedup 여지(추후).
+**Context**: CONSTRUCTION - report finding drill-down (r13).
+
+---
