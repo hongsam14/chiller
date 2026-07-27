@@ -97,15 +97,21 @@ func (sensitiveCommentSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool
 type gitExposureSig struct{}
 
 func (gitExposureSig) CWE() domain.CWE { return cweGit }
+
+// gitPath requires the path to be UNDER /.git (a segment boundary), so the loose
+// old `Contains("/.git")` no longer trips on `/.gitignore` or `/.github/` (r10
+// FP-narrow). Content anchors alone ("[core]", "ref: refs/") appear in ordinary
+// ini/docs pages, so the path guard is still required.
+var gitPath = regexp.MustCompile(`/\.git(/|$)`)
+
 func (gitExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
 	if ctx.Response == nil || ctx.Response.Status != 200 {
 		return nil, false, nil
 	}
-	// Require a .git path — content anchors alone ("[core]", "ref: refs/") appear
-	// in ordinary ini/docs pages and would false-positive without this.
-	if !strings.Contains(pathOf(ctx.Target.URL), "/.git") {
+	if !gitPath.MatchString(pathOf(ctx.Target.URL)) {
 		return nil, true, nil // not a .git endpoint → N/A for this target
 	}
+	// config → "[core]"; HEAD → "ref: refs/". Either confirms real git metadata.
 	b := string(ctx.Response.Body)
 	if strings.HasPrefix(b, "ref: refs/") || strings.Contains(b, "[core]") {
 		return []domain.Finding{finding(cweGit, ctx.Target.URL, domain.SevHigh, ".git metadata exposed")}, false, nil
@@ -116,14 +122,48 @@ func (gitExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 // ---- PS-011: .env exposure ----
 type envExposureSig struct{}
 
-var envAnchor = regexp.MustCompile(`(?m)^\s*(DB_PASSWORD|APP_KEY|SECRET_KEY|AWS_SECRET_ACCESS_KEY)\s*=`)
+// envAnchor matches a `KEY = value` line whose KEY *names* a secret. The key is
+// generalised (r10) beyond the old 4-name list so prefixed/suffixed variants
+// (STRIPE_SECRET_KEY, JWT_SECRET, MAIL_PASSWORD) are caught, while the original
+// four names (DB_PASSWORD/APP_KEY/SECRET_KEY/AWS_SECRET_ACCESS_KEY) remain covered
+// — APP_KEY in particular is not a *_KEY substring of the generic set, so it is
+// listed explicitly (its loss was a silent FN regression). Group 2 captures the
+// value; only a non-empty value fires (an empty `KEY=` is a commented/unset line).
+// There is NO value-length floor: a short real secret (`DB_PASSWORD=p@ss!`) on a
+// live .env is a real exposure. `(?im)` = case-insensitive, ^ per line.
+var envAnchor = regexp.MustCompile(`(?im)^[ \t]*([A-Z0-9_]*(SECRET|PASSWORD|PASSWD|API_?KEY|APP_?KEY|ACCESS_KEY|TOKEN|PRIVATE_KEY|CREDENTIAL)[A-Z0-9_]*)[ \t]*=[ \t]*["']?([^\s"']+)`)
+
+// envPath / envTemplatePath are the PATH guard (mirrors gitExposureSig): the
+// generalised key pattern above must only judge an actual .env artifact, never an
+// arbitrary 200 page that happens to start a line with `*_TOKEN=...` (that was a
+// Critical false positive on any page). A template file (.env.example/.sample/
+// .dist) is a public, expected artifact and holds placeholders by design → N/A.
+var (
+	envPath         = regexp.MustCompile(`(?i)(^|/)\.env(\.(local|prod|production|dev|development|staging|stage|test))?$`)
+	envTemplatePath = regexp.MustCompile(`(?i)(^|/)\.env\.(example|sample|dist|template)$`)
+)
+
+// envPlaceholderPrefix screens out UNFILLED template tokens (`your_password`,
+// `<changeme>`, `${SECRET}`, `xxxxx`, `...`) even when they appear in a real .env.
+// It deliberately no longer suppresses weak-but-real values like `secret` or
+// `password`: on a live, publicly-readable .env those are genuinely exposed weak
+// credentials and must fire (their old blanket suppression was an FN regression).
+var envPlaceholderPrefix = regexp.MustCompile(`(?i)^(your[_-]|my[_-]|<|\$\{|xxx|\.\.\.|change[_-]?me|change[_-]?it)`)
 
 func (envExposureSig) CWE() domain.CWE { return cweEnv }
 func (envExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
 	if ctx.Response == nil || ctx.Response.Status != 200 {
 		return nil, false, nil
 	}
-	if envAnchor.Match(ctx.Response.Body) {
+	p := pathOf(ctx.Target.URL)
+	if envTemplatePath.MatchString(p) || !envPath.MatchString(p) {
+		return nil, true, nil // public template, or not a .env file at all → N/A
+	}
+	for _, m := range envAnchor.FindAllSubmatch(ctx.Response.Body, -1) {
+		val := m[3]
+		if envPlaceholderPrefix.Match(val) {
+			continue // unfilled template token, not a real secret
+		}
 		return []domain.Finding{finding(cweEnv, ctx.Target.URL, domain.SevCritical, ".env with secret keys exposed")}, false, nil
 	}
 	return nil, false, nil
@@ -158,17 +198,38 @@ func (crossdomainSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 	return nil, false, nil
 }
 
-// ---- PS-012: backup file exposure (URL-suffix anchor) ----
+// ---- PS-012: backup file exposure (backup-name heuristic) ----
 type backupFileSig struct{}
 
-var backupSuffix = regexp.MustCompile(`(?i)\.(bak|old|zip|tar|tar\.gz|sql|swp)$|~$`)
+// backupName fires on a backup-*named* file, not on any archive (r10 FN-broaden +
+// FP-narrow). Shapes: (1) a double extension `<name>.<ext>.(bak|old|save|orig)`
+// e.g. index.php.bak / .env.bak; (2) a classic backup/editor suffix
+// `.bak/.old/.swp/.orig/.save` or a trailing `~`; (3) an archive whose basename
+// CONTAINS an unambiguous backup keyword (backup|dump|database|wwwroot) e.g.
+// site-backup.zip / db_backup.tar.gz; (4) an archive whose basename IS a short
+// backup token (bak|db|www|site) bounded by separators, e.g. db.sql / www.zip.
+// A plain `report.zip`, `data.sql`, or `sandbox.zip` (no backup keyword as a
+// bounded token) does NOT match — that was the old any-archive false positive.
+// Separator-bearing names like `site-backup.zip` DO match — losing them was an FN.
+var backupArchiveExt = `(zip|tar|tar\.gz|tgz|sql|7z|gz|rar)`
+var backupName = regexp.MustCompile(`(?i)(` +
+	`\.\w+\.(bak|old|save|orig)$` + // double extension
+	`|\.(bak|old|swp|orig|save)$` + // editor/backup suffix
+	`|~$` + // emacs backup
+	`|(^|/)[\w.-]*(backup|dump|database|wwwroot)[\w.-]*\.` + backupArchiveExt + `$` + // long keyword anywhere in basename
+	`|(^|/)([\w.-]*[-_.])?(bak|db|www|site)([-_.][\w.-]*)?\.` + backupArchiveExt + `$` + // short keyword as a bounded token
+	`)`)
 
 func (backupFileSig) CWE() domain.CWE { return cweBackup }
 func (backupFileSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
 	if ctx.Response == nil || ctx.Response.Status != 200 {
 		return nil, false, nil
 	}
-	if backupSuffix.MatchString(pathOf(ctx.Target.URL)) {
+	// A real backup archive is not served as an HTML page. A soft-404 site that
+	// answers /backup.zip with 200 + its homepage HTML would otherwise let the
+	// engine fabricate a High from its own synthesized request — require the body
+	// to NOT look like HTML before reporting (r10 FP-narrow).
+	if backupName.MatchString(pathOf(ctx.Target.URL)) && !looksLikeHTML(ctx.Response) {
 		return []domain.Finding{finding(cweBackup, ctx.Target.URL, domain.SevHigh, "accessible backup file")}, false, nil
 	}
 	return nil, false, nil
@@ -177,7 +238,33 @@ func (backupFileSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, erro
 // ---- PS-013: admin page publicly accessible ----
 type adminPageSig struct{}
 
-var adminPath = regexp.MustCompile(`(?i)/(admin|administrator|manage|wp-admin)(/|$)`)
+// adminPath is broadened (r10 FN) to the common admin surfaces.
+var adminPath = regexp.MustCompile(`(?i)/(admin|administrator|administration|manage|manager/html|wp-admin|phpmyadmin|dashboard|backend)(/|$)`)
+
+// adminContentMarker is POSITIVE evidence that the returned body actually is an
+// administrative interface, not a soft-404 homepage served for /admin. Without it
+// the check concluded "reachable without authentication" from the mere ABSENCE of
+// a login form — so a site that answers unknown paths with 200 + its marketing
+// homepage self-generated a High from the engine's own synthesized /admin request
+// (r10 FP-narrow). We require an admin-panel signal (title/heading/console
+// vocabulary or a known admin product) before firing.
+var adminContentMarker = regexp.MustCompile(`(?i)(admin(istrator|istration)?\s*(panel|console|dashboard|area|home|menu|login)|control\s*panel|management\s*console|phpmyadmin|wp-admin|>\s*(dashboard|users|settings|configuration|system)\s*<)`)
+
+// loginMarker screens out pages that are actually a login/redirect or a JS-
+// rendered SPA shell (r10 FP-narrow): without a browser those return 200 with no
+// <input type=password> yet, which the old check misread as "reachable without
+// authentication". It matches only STRONG login-page signals — an auth-required
+// phrase, an SPA shell, a sign-in TITLE, or a login FORM/action — and never the
+// bare word "login" anywhere in the body. The old unanchored `log[- ]?in` matched
+// incidental prose like "Last login:", a `class="login-box"`, or a
+// `/wp-login.php` link, which suppressed a genuinely-open admin panel (an FN).
+var loginMarker = regexp.MustCompile(`(?i)(` +
+	`authentication required|please authenticate|unauthori[sz]ed` +
+	`|<app-root|ng-app|id=["']root["']` + // SPA shells
+	`|<title[^>]*>[^<]*(sign[- ]?in|log[- ]?in)` + // sign-in page title
+	`|<form[^>]*(login|signin|sign-in|auth)` + // a login form element
+	`|action\s*=\s*["'][^"']*(login|signin|sign-in|auth)` + // a form posting to a login endpoint
+	`)`)
 
 func (adminPageSig) CWE() domain.CWE { return cweAdmin }
 func (adminPageSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
@@ -187,8 +274,12 @@ func (adminPageSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error
 	if !adminPath.MatchString(pathOf(ctx.Target.URL)) {
 		return nil, true, nil // not an admin path → N/A for this target
 	}
-	// public access = 200 and not a login/redirect
-	if ctx.Response.Status == 200 && !hasPasswordField(string(ctx.Response.Body)) {
+	// Public access = 200, an actual admin interface in the body, no login form,
+	// and no login/SPA marker. The positive admin-content requirement is what stops
+	// a soft-404 homepage from being reported as an open admin page.
+	body := string(ctx.Response.Body)
+	if ctx.Response.Status == 200 && adminContentMarker.MatchString(body) &&
+		!hasPasswordField(body) && !loginMarker.MatchString(body) {
 		return []domain.Finding{finding(cweAdmin, ctx.Target.URL, domain.SevHigh, "admin page reachable without authentication")}, false, nil
 	}
 	return nil, false, nil
@@ -197,7 +288,13 @@ func (adminPageSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error
 // ---- PS-008: robots.txt sensitive path (light anchor) ----
 type robotsSensitiveSig struct{}
 
-var robotsSensitive = regexp.MustCompile(`(?im)^\s*Disallow:\s*/.*(admin|backup|config|secret|private|internal)`)
+// robotsSensitive stays anchored to a `Disallow:` line (not a loose body match)
+// and broadens the sensitive-path keyword set (r10 FN) — but each keyword must be
+// a PATH SEGMENT (preceded by `/`, followed by a `/`, `.`, separator, or line end),
+// NOT a bare substring. The short keywords (db/api/sql/env) as substrings matched
+// ordinary paths — `/feedback` and `/cardboard` contain "db", `/rapid-delivery`
+// contains "api" — turning routine robots.txt entries into false CWE-651 findings.
+var robotsSensitive = regexp.MustCompile(`(?im)^\s*Disallow:\s*\S*/(admin|backup|config|secret|private|internal|database|sql|\.env|logs|db|api)($|[/.?~_-])`)
 
 func (robotsSensitiveSig) CWE() domain.CWE { return cweRobots }
 func (robotsSensitiveSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
@@ -322,4 +419,23 @@ func pathOf(raw string) string {
 		return u.Path
 	}
 	return raw
+}
+
+// looksLikeHTML reports whether a response body is an HTML page — used to reject
+// soft-404s (a 200 + homepage HTML returned for a path that does not really
+// exist). A genuine backup archive (.zip/.sql/.bak) is never served as text/html.
+// It trusts an explicit Content-Type when present, and otherwise sniffs the body
+// for a leading HTML marker.
+func looksLikeHTML(r *domain.HAREntry) bool {
+	if r == nil {
+		return false
+	}
+	for _, h := range r.Headers {
+		if strings.EqualFold(h.Name, "Content-Type") {
+			ct := strings.ToLower(h.Value)
+			return strings.Contains(ct, "text/html") || strings.Contains(ct, "application/xhtml")
+		}
+	}
+	b := strings.TrimLeft(strings.ToLower(string(r.Body)), " \t\r\n")
+	return strings.HasPrefix(b, "<!doctype html") || strings.HasPrefix(b, "<html") || strings.HasPrefix(b, "<head") || strings.HasPrefix(b, "<!doctype")
 }

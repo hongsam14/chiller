@@ -2,8 +2,11 @@ package orchestrator
 
 import (
 	"fmt"
+	"log"
+	"net/url"
 
 	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/scan/checking/observation"
 	"github.com/hongsam14/chiller/internal/scan/ingest"
 )
 
@@ -26,10 +29,20 @@ func fanOut(scanID domain.ScanID, set ingest.URLSet, haveURL, haveHost bool) []d
 	}
 
 	if haveURL {
-		for _, t := range interleaveByHost(set.URLs) {
-			items = append(items, domain.WorkItem{
-				ID: nextID(), ScanID: scanID, Scope: domain.URLScoped, Target: t,
-			})
+		// Build every URL-scoped item first (submitted + synthesized well-known),
+		// THEN interleave the whole set by host. The well-known sweep must not be
+		// appended host-major after the interleaved prefix: Enqueue preserves slice
+		// order, so a trailing block of N consecutive same-host items would let one
+		// rate-limited host head-of-line-block every other host's work (defeating
+		// the PR-3a interleave invariant this file guarantees).
+		urlItems := make([]domain.WorkItem, 0, len(set.URLs))
+		for _, t := range set.URLs {
+			urlItems = append(urlItems, domain.WorkItem{ScanID: scanID, Scope: domain.URLScoped, Target: t})
+		}
+		urlItems = append(urlItems, wellKnownItems(scanID, set)...)
+		for _, it := range interleaveItemsByHost(urlItems) {
+			it.ID = nextID()
+			items = append(items, it)
 		}
 	}
 	if haveHost {
@@ -42,18 +55,66 @@ func fanOut(scanID domain.ScanID, set ingest.URLSet, haveURL, haveHost bool) []d
 	return items
 }
 
-// interleaveByHost round-robins targets across their hosts so the sequence
-// alternates hosts as much as possible (order-stable within a host).
-func interleaveByHost(targets []domain.Target) []domain.Target {
-	order := []string{}
-	byHost := map[string][]domain.Target{}
-	for _, t := range targets {
-		if _, seen := byHost[t.Host]; !seen {
-			order = append(order, t.Host)
-		}
-		byHost[t.Host] = append(byHost[t.Host], t)
+// wellKnownItems synthesizes the r10 well-known-path sweep: for each distinct
+// approved host, one URL-scoped item per fixed well-known path so the owning
+// observation signatures receive their artifact (they only ever judge the
+// submitted URL's response otherwise → false-clean/N-A). Each item is flagged
+// WellKnown so the executor runs ONLY the observation signatures on it, never the
+// URL-scoped probe adapters (see domain.WorkItem.WellKnown). They reuse the exact
+// URL-scoped fetch, approval gate (SR-3), and per-host rate budget (SR-4).
+//
+// The sweep sits OUTSIDE the user's MaxURLs ceiling by design (Q6=A/PR-W3), so it
+// carries its OWN bound: DisableWellKnown turns it off, and MaxWellKnownHosts caps
+// how many distinct hosts it runs on (hosts beyond the cap are skipped and
+// logged, never silently dropped). coverage accounting keys off checker
+// ownership, not item count, so this leaves the 26-partition fold untouched
+// (PR-W6). IDs are assigned by the caller after interleaving.
+func wellKnownItems(scanID domain.ScanID, set ingest.URLSet) []domain.WorkItem {
+	if set.Options.DisableWellKnown {
+		return nil
 	}
-	out := make([]domain.Target, 0, len(targets))
+	hosts := distinctHosts(set.URLs)
+	if limit := set.Options.MaxWellKnownHosts; limit > 0 && len(hosts) > limit {
+		log.Printf("scan %s: well-known sweep capped at %d of %d hosts (MaxWellKnownHosts); %d host(s) not swept",
+			scanID, limit, len(hosts), len(hosts)-limit)
+		hosts = hosts[:limit]
+	}
+	var out []domain.WorkItem
+	for _, h := range hosts {
+		// Preserve the authority (host:port) from the representative URL so a
+		// well-known GET hits the same port the user submitted — using the bare
+		// Host would drop a non-default port and probe :80 instead. Target.Host
+		// stays the hostname (the rate-limiter key + approval-gate key).
+		authority := h.Host
+		if u, err := url.Parse(h.URL); err == nil && u.Host != "" {
+			authority = u.Host
+		}
+		base := h.Scheme + "://" + authority
+		for _, p := range observation.WellKnownPaths() {
+			out = append(out, domain.WorkItem{
+				ScanID: scanID, Scope: domain.URLScoped, WellKnown: true,
+				Target: domain.Target{Host: h.Host, Scheme: h.Scheme, URL: base + p},
+			})
+		}
+	}
+	return out
+}
+
+// interleaveItemsByHost round-robins work items across their target hosts so the
+// sequence alternates hosts as much as possible (order-stable within a host).
+// Applying this to the FULL URL-scoped set (submitted + well-known) keeps the
+// PR-3a interleave invariant intact once the well-known sweep is folded in.
+func interleaveItemsByHost(in []domain.WorkItem) []domain.WorkItem {
+	order := []string{}
+	byHost := map[string][]domain.WorkItem{}
+	for _, it := range in {
+		h := it.Target.Host
+		if _, seen := byHost[h]; !seen {
+			order = append(order, h)
+		}
+		byHost[h] = append(byHost[h], it)
+	}
+	out := make([]domain.WorkItem, 0, len(in))
 	for {
 		progressed := false
 		for _, h := range order {

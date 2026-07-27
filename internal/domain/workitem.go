@@ -10,6 +10,14 @@ type WorkItem struct {
 	ScanID ScanID     `bson:"scanId"`
 	Scope  ScopeKind  `bson:"scope"`
 	Target Target     `bson:"target"`
+	// WellKnown marks an engine-synthesized well-known-path item (r10). Such an
+	// item exists only to deliver its artifact to the in-process observation
+	// signatures, so the executor runs ONLY those on it — never the external-CLI
+	// probe adapters, which would otherwise be re-exec'd once per synthesized path
+	// against paths that are almost always 404 (amplification). It is a data field,
+	// so it round-trips through the bson ledger and json queue payload unchanged;
+	// old items decode it as false (a normal, all-checkers URL item).
+	WellKnown bool `bson:"wellKnown,omitempty" json:"wellKnown,omitempty"`
 }
 
 // WorkItemOutcome reports what a WorkItem produced. Failed lists the checkers

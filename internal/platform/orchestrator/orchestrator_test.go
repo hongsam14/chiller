@@ -50,15 +50,137 @@ func TestFanOut_URLAndHostCounts_Interleaved(t *testing.T) {
 			host++
 		}
 	}
-	if url != 3 {
-		t.Errorf("url items = %d, want 3", url)
+	// URL items = 3 submitted + a well-known sweep per distinct host (a, b), each
+	// URL-scoped (r10). Host items = one per distinct host.
+	wantURL := 3 + 2*len(observation.WellKnownPaths())
+	if url != wantURL {
+		t.Errorf("url items = %d, want %d (3 submitted + 2 hosts × %d well-known)", url, wantURL, len(observation.WellKnownPaths()))
 	}
 	if host != 2 {
 		t.Errorf("host items = %d, want 2 (distinct hosts a,b)", host)
 	}
-	// Host-interleave: the first two URL items should target different hosts.
-	if items[0].Target.Host == items[1].Target.Host {
-		t.Errorf("URL items not host-interleaved: %s then %s", items[0].Target.Host, items[1].Target.Host)
+	// Host-interleave (PR-3a) must hold across the WHOLE URL-scoped set — submitted
+	// AND synthesized well-known items. A regression that appends the well-known
+	// sweep host-major (all of host a, then all of host b) would leave a long run
+	// of consecutive same-host items; assert no run exceeds 1 across the interleaved
+	// URL items (a stronger check than only inspecting items[0]/items[1]).
+	run, maxRun, prev := 0, 0, ""
+	for _, it := range items {
+		if it.Scope != domain.URLScoped {
+			continue
+		}
+		if it.Target.Host == prev {
+			run++
+		} else {
+			run = 1
+			prev = it.Target.Host
+		}
+		if run > maxRun {
+			maxRun = run
+		}
+	}
+	// hosts a (2 submitted + N well-known) and b (1 + N) round-robin cleanly, so no
+	// two consecutive URL items share a host until at most the tail remainder.
+	if maxRun > 2 {
+		t.Errorf("URL items not host-interleaved: max same-host run = %d (want ≤2); well-known sweep appended host-major?", maxRun)
+	}
+}
+
+// TestFanOut_WellKnown_Disabled: the off-switch suppresses the whole sweep, and
+// TestFanOut_WellKnown_HostCap: the per-scan host cap bounds it (r10, finding 9 —
+// the sweep sits outside MaxURLs so it must carry its own ceiling).
+func TestFanOut_WellKnown_Disabled(t *testing.T) {
+	set := ingest.URLSet{
+		URLs:    []domain.Target{{URL: "http://a/1", Host: "a", Scheme: "http"}},
+		Options: ingest.ScanOptions{DisableWellKnown: true},
+	}
+	items := fanOut("s", set, true, false)
+	for _, it := range items {
+		if it.WellKnown {
+			t.Errorf("DisableWellKnown set, but a well-known item was synthesized: %+v", it.Target)
+		}
+	}
+	if len(items) != 1 {
+		t.Errorf("url items = %d, want 1 (only the submitted URL, no sweep)", len(items))
+	}
+}
+
+func TestFanOut_WellKnown_HostCap(t *testing.T) {
+	set := ingest.URLSet{
+		URLs: []domain.Target{
+			{URL: "http://a/1", Host: "a", Scheme: "http"},
+			{URL: "http://b/1", Host: "b", Scheme: "http"},
+			{URL: "http://c/1", Host: "c", Scheme: "http"},
+		},
+		Options: ingest.ScanOptions{MaxWellKnownHosts: 2}, // cap below the 3 distinct hosts
+	}
+	items := fanOut("s", set, true, false)
+	swept := map[string]bool{}
+	for _, it := range items {
+		if it.WellKnown {
+			swept[it.Target.Host] = true
+		}
+	}
+	if len(swept) != 2 {
+		t.Errorf("well-known swept %d hosts, want 2 (MaxWellKnownHosts cap)", len(swept))
+	}
+}
+
+// TestFanOut_WellKnownSynthesis: for each distinct host, one URL-scoped item per
+// well-known path is synthesized (r10, PR-W1) — deduped per host, carrying the
+// well-known path in Target.URL so the owning signature keys off it.
+func TestFanOut_WellKnownSynthesis(t *testing.T) {
+	set := ingest.URLSet{URLs: []domain.Target{
+		{URL: "http://a/1", Host: "a", Scheme: "http"},
+		{URL: "http://a/2", Host: "a", Scheme: "http"}, // same host → one sweep
+		{URL: "https://b/x", Host: "b", Scheme: "https"},
+	}}
+	items := fanOut("s", set, true, false) // haveURL only
+
+	// Collect synthesized well-known items (URL path matches a well-known path).
+	wk := map[string]map[string]bool{} // host → set of well-known paths seen
+	for _, it := range items {
+		for _, p := range observation.WellKnownPaths() {
+			if it.Target.URL == it.Target.Scheme+"://"+it.Target.Host+p {
+				if wk[it.Target.Host] == nil {
+					wk[it.Target.Host] = map[string]bool{}
+				}
+				wk[it.Target.Host][p] = true
+			}
+		}
+	}
+	for _, h := range []string{"a", "b"} {
+		if len(wk[h]) != len(observation.WellKnownPaths()) {
+			t.Errorf("host %s: got %d well-known items, want %d (one sweep per host)", h, len(wk[h]), len(observation.WellKnownPaths()))
+		}
+	}
+	// Every synthesized item is URL-scoped and uses the host's own scheme.
+	for _, it := range items {
+		if it.Target.Host == "b" && it.Target.Scheme != "https" {
+			t.Errorf("host b well-known item lost its scheme: %+v", it.Target)
+		}
+	}
+}
+
+// TestFanOut_WellKnown_MaxURLsIndependent: synthesis happens after ingest, so the
+// well-known items are NOT bounded by the user's MaxURLs (Q6=A/PR-W3). fanOut
+// receives an already-validated URLSet, so this asserts the structural property:
+// the count of synthesized items depends only on distinct hosts, not on MaxURLs.
+func TestFanOut_WellKnown_MaxURLsIndependent(t *testing.T) {
+	set := ingest.URLSet{
+		URLs:    []domain.Target{{URL: "http://a/1", Host: "a", Scheme: "http"}},
+		Options: ingest.ScanOptions{MaxURLs: 1}, // user ceiling already applied upstream
+	}
+	items := fanOut("s", set, true, false)
+	urlItems := 0
+	for _, it := range items {
+		if it.Scope == domain.URLScoped {
+			urlItems++
+		}
+	}
+	// 1 submitted + a full well-known sweep — the MaxURLs=1 does not clip the sweep.
+	if want := 1 + len(observation.WellKnownPaths()); urlItems != want {
+		t.Errorf("url items = %d, want %d — well-known must not be clipped by MaxURLs", urlItems, want)
 	}
 }
 

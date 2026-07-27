@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"log"
+	"strings"
 
 	"github.com/hongsam14/chiller/internal/domain"
 	"github.com/hongsam14/chiller/internal/findings/coverage"
@@ -97,15 +98,19 @@ func (o *Orchestrator) wipeCache(ctx context.Context, id domain.ScanID) {
 // checkers ran on each item, since a WorkItemOutcome does not enumerate its
 // ok checkers.
 func (o *Orchestrator) foldOutcomes(id domain.ScanID, ctx context.Context, outcomes []domain.WorkItemOutcome) coverage.ScanOutcome {
-	// Map each item id → its scope so we know which checkers ran on it.
-	scopeOf := o.itemScopes(ctx, id)
+	// Map each item id → the item, so we know which checkers actually ran on it.
+	// Scope alone is not enough: a well-known item is URL-scoped but runs the
+	// observation signatures ONLY (see exec), so crediting the probes as "ran ok"
+	// on it would falsely mark their PS-items Checked — the exact honesty failure
+	// this fold exists to prevent.
+	itemByID := o.itemsByID(ctx, id)
 
 	appliedOK := map[domain.CheckerID]bool{}
 	failedOnly := map[domain.CheckerID]bool{}
 	naCWEs := map[domain.CheckerID]map[domain.CWE]bool{}
 
 	for _, oc := range outcomes {
-		ran := o.checkersForScope(scopeOf[oc.ID])
+		ran := o.ranCheckers(itemByID[oc.ID])
 		failed := map[domain.CheckerID]bool{}
 		for _, c := range oc.Failed {
 			failed[c] = true
@@ -159,37 +164,55 @@ func (o *Orchestrator) foldOutcomes(id domain.ScanID, ctx context.Context, outco
 	return so
 }
 
-// itemScopes returns each WorkItem id → its scope, from the store (the source of
-// truth for the ledger).
-func (o *Orchestrator) itemScopes(ctx context.Context, id domain.ScanID) map[domain.WorkItemID]domain.ScopeKind {
+// itemsByID returns each WorkItem id → the item, from the store (the source of
+// truth for the ledger). The whole item (not just its scope) is needed because
+// the ran-checker set depends on the WellKnown flag too.
+func (o *Orchestrator) itemsByID(ctx context.Context, id domain.ScanID) map[domain.WorkItemID]domain.WorkItem {
 	items, err := o.cfg.Store.AllItems(ctx, id)
 	if err != nil {
-		return map[domain.WorkItemID]domain.ScopeKind{}
+		return map[domain.WorkItemID]domain.WorkItem{}
 	}
-	out := make(map[domain.WorkItemID]domain.ScopeKind, len(items))
+	out := make(map[domain.WorkItemID]domain.WorkItem, len(items))
 	for _, it := range items {
-		out[it.ID] = it.Scope
+		out[it.ID] = it
 	}
 	return out
 }
 
-// checkersForScope returns the checkers that run on an item of the given scope
-// (the same split exec uses): URL-scoped items run every URL-scoped checker;
-// host-scoped items run every host-scoped checker.
+// ranCheckers returns the checkers that actually ran on an item — it MUST mirror
+// exec's split exactly, since the fold reconstructs per-checker outcome from which
+// checkers ran on which item. URL-scoped items run every URL-scoped checker;
+// a well-known URL-scoped item runs the observation signatures only (exec drops
+// the probe adapters on it); host-scoped items run every host-scoped checker.
 //
 // An invalid scope returns NO checkers rather than falling through to the
 // host-scoped set. This is the fold, so a wrong answer here becomes a wrong
 // compliance record: attributing the host-scoped checkers to an item they never
 // ran on would mark testssl/dirhunt/subzy's PS items as checked.
-func (o *Orchestrator) checkersForScope(s domain.ScopeKind) []domain.Checker {
-	switch s {
+func (o *Orchestrator) ranCheckers(wi domain.WorkItem) []domain.Checker {
+	switch wi.Scope {
 	case domain.URLScoped:
+		if wi.WellKnown {
+			return observationCheckers(o.urlScoped)
+		}
 		return o.urlScoped
 	case domain.HostScoped:
 		return o.hostScoped
 	default:
 		return nil
 	}
+}
+
+// observationCheckers filters to the in-process observation signatures, mirroring
+// exec's well-known checker set (checker ids "observation:<CWE>" vs "probe:<tool>").
+func observationCheckers(cs []domain.Checker) []domain.Checker {
+	out := make([]domain.Checker, 0, len(cs))
+	for _, c := range cs {
+		if strings.HasPrefix(string(c.ID()), "observation:") {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // fail transitions a scan to failed (unrecoverable finalize error, PR-6/E-2).

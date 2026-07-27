@@ -5,6 +5,7 @@ package exec
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hongsam14/chiller/internal/domain"
 	"github.com/hongsam14/chiller/internal/scan/fetch"
@@ -76,6 +77,17 @@ func (e *executor) Run(ctx context.Context, wi domain.WorkItem, cache fetch.Resp
 		}
 		sctx = domain.ScanContext{Target: wi.Target, Response: html, DiscoveredJS: js} // ④
 		checkers = e.urlScoped
+		// An engine-synthesized well-known item (r10) is a delivery vehicle for the
+		// in-process observation signatures only. Running the URL-scoped probe
+		// adapters (humble/httpx/Corsy/changeme) on it too would re-exec each binary
+		// once per synthesized path — ~15× per host, against paths that are almost
+		// always 404 — amplifying runtime and the probes' own (un-rate-limited)
+		// outbound traffic. Coverage is unaffected: the probes still run on the
+		// user's submitted URL items, and the fold keys off checker ownership, not
+		// item count.
+		if wi.WellKnown {
+			checkers = observationOnly(e.urlScoped)
+		}
 	} else {
 		// host-scoped probes do their own outbound I/O — gate the host first, so
 		// nothing runs against an unapproved host (fail-closed, SR-3).
@@ -100,6 +112,20 @@ func (e *executor) Run(ctx context.Context, wi domain.WorkItem, cache fetch.Resp
 		out.Findings = append(out.Findings, res.Findings...)
 		if len(res.NotApplicable) > 0 {
 			out.NotApplicable[c.ID()] = res.NotApplicable
+		}
+	}
+	return out
+}
+
+// observationOnly filters a URL-scoped checker set down to the in-process
+// Observation engine, dropping the external-CLI probe adapters. Observation
+// checker ids are "observation:<CWE>" and probe ids are "probe:<tool>"
+// (see the registry), so the prefix is the reliable discriminator.
+func observationOnly(cs []domain.Checker) []domain.Checker {
+	out := make([]domain.Checker, 0, len(cs))
+	for _, c := range cs {
+		if strings.HasPrefix(string(c.ID()), "observation:") {
+			out = append(out, c)
 		}
 	}
 	return out
