@@ -165,9 +165,10 @@ func WithFramework(fw domain.Framework) Option {
 // scanRequestDTO is the wire shape for POST /scans (JSON-tagged, so the scan
 // unit's ingest structs stay free of transport concerns).
 type scanRequestDTO struct {
-	URLs     []string `json:"urls"`
-	Approved []string `json:"approved"`
-	Options  struct {
+	URLs      []string `json:"urls"`
+	Approved  []string `json:"approved"`
+	Framework string   `json:"framework"` // accounting framework (e.g. "KISA"|"FSEC"); "" ⇒ server default
+	Options   struct {
 		RatePerHost int      `json:"ratePerHost"`
 		Burst       int      `json:"burst"`
 		MaxURLs     int      `json:"maxURLs"`
@@ -262,7 +263,7 @@ func (h *Handler) postScan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed json"})
 		return
 	}
-	id, err := h.orch.CreateScan(r.Context(), dto.toRequest())
+	id, err := h.orch.CreateScan(r.Context(), dto.toRequest(), domain.Framework(dto.Framework))
 	if err != nil {
 		if errors.Is(err, platform.ErrBadRequest) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})

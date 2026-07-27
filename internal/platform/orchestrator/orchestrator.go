@@ -41,6 +41,16 @@ type Config struct {
 	Cache         fetch.ResponseCache
 	Frameworks    []domain.Framework
 
+	// Per-request framework selection (optional). A scan carries the framework it
+	// was created with; finalize accounts + reports with THAT framework's runtime.
+	// FrameworkRuntimes maps each supported framework to its accountant/mapper/
+	// report-builder (each framework has its own mapping+spec, so they don't share).
+	// When empty (single-framework deployments, and every existing test), finalize
+	// falls back to the Accountant/Mapper/ReportBuilder above — behaviour unchanged.
+	FrameworkRuntimes map[domain.Framework]FrameworkRuntime
+	// DefaultFramework is used when a scan requests none. Empty ⇒ FrameworkKISA.
+	DefaultFramework domain.Framework
+
 	// CacheStats is handed to each per-scan Fetcher so cache hits, misses and
 	// backend errors are counted where they happen. nil ⇒ not counted.
 	CacheStats *fetch.CacheStats
@@ -110,11 +120,19 @@ func New(cfg Config) *Orchestrator {
 	return o
 }
 
-func (o *Orchestrator) CreateScan(ctx context.Context, req platform.ScanRequest) (domain.ScanID, error) {
+func (o *Orchestrator) CreateScan(ctx context.Context, req platform.ScanRequest, fw ...domain.Framework) (domain.ScanID, error) {
 	// Validate + bound the request now (fail-closed) so a bad request is a 400,
 	// not a late worker crash. The validated set is recomputed at fan-out.
 	if _, err := o.cfg.Ingestor.Ingest(req); err != nil {
 		return "", fmt.Errorf("%w: %v", platform.ErrBadRequest, err)
+	}
+	// Resolve the requested framework (variadic keeps the 2-arg callers working).
+	framework := o.defaultFramework()
+	if len(fw) > 0 && fw[0] != "" {
+		framework = fw[0]
+	}
+	if !o.knownFramework(framework) {
+		return "", fmt.Errorf("%w: unknown framework %q", platform.ErrBadRequest, framework)
 	}
 	id := o.cfg.NewID()
 	now := o.cfg.Clock()
@@ -122,7 +140,7 @@ func (o *Orchestrator) CreateScan(ctx context.Context, req platform.ScanRequest)
 		ID:         id,
 		State:      platform.StateCreated,
 		Request:    req,
-		Frameworks: o.cfg.Frameworks,
+		Frameworks: []domain.Framework{framework},
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -130,6 +148,52 @@ func (o *Orchestrator) CreateScan(ctx context.Context, req platform.ScanRequest)
 		return "", err
 	}
 	return id, nil
+}
+
+// FrameworkRuntime bundles the per-framework accounting pieces. Each framework has
+// its own mapping file (hence its own mapper) and coverage spec (hence its own
+// accountant + report projection), so they cannot be shared.
+type FrameworkRuntime struct {
+	Accountant    *coverage.Accountant
+	Mapper        compliance.Mapper
+	ReportBuilder report.Builder
+}
+
+func (o *Orchestrator) defaultFramework() domain.Framework {
+	if o.cfg.DefaultFramework != "" {
+		return o.cfg.DefaultFramework
+	}
+	return domain.FrameworkKISA
+}
+
+// knownFramework reports whether a scan may request this framework: the default is
+// always allowed (single-framework deployments have no runtimes map), plus any
+// framework with a registered runtime.
+func (o *Orchestrator) knownFramework(fw domain.Framework) bool {
+	if fw == o.defaultFramework() {
+		return true
+	}
+	_, ok := o.cfg.FrameworkRuntimes[fw]
+	return ok
+}
+
+// runtimeFor returns the accounting runtime for a scan's framework, falling back
+// to the process-default (Accountant/Mapper/ReportBuilder) when the framework has
+// no dedicated runtime — the single-framework path every existing test takes.
+func (o *Orchestrator) runtimeFor(fw domain.Framework) FrameworkRuntime {
+	if rt, ok := o.cfg.FrameworkRuntimes[fw]; ok {
+		return rt
+	}
+	return FrameworkRuntime{Accountant: o.cfg.Accountant, Mapper: o.cfg.Mapper, ReportBuilder: o.cfg.ReportBuilder}
+}
+
+// scanFramework reads the framework a scan was created with (its stored single
+// entry), defaulting when absent.
+func (o *Orchestrator) scanFramework(ctx context.Context, id domain.ScanID) domain.Framework {
+	if s, err := o.cfg.Store.LoadScan(ctx, id); err == nil && len(s.Frameworks) > 0 && s.Frameworks[0] != "" {
+		return s.Frameworks[0]
+	}
+	return o.defaultFramework()
 }
 
 func (o *Orchestrator) StartScan(ctx context.Context, id domain.ScanID) error {
