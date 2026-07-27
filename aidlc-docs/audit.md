@@ -1324,3 +1324,11 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: OPERATIONS - production-readiness updated (Observation well-known, r10).
 
 ---
+## UI: 고객용 컴플라이언스 리포트 뷰 신설 (r11)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "현재 ui에서 scan결과를 열람하는 부분에 대한 개선이 필요. (1) 취약 발견 카운터 (2) 항목 제목/설명 mapping yaml 추가 + 표에 제목 (3) 컴플라이언스 기반 탐지 증적 시각화 + delegated/not_applicable을 실패/스킵이 아니라 다른 엔진 이관/해당없음으로 표현"
+**Decisions (AskUserQuestion)**: 카탈로그=coverage yaml 단일 파일(이원화 회피) · delegated/n/a 구분 표현(정직): delegated=담당 엔진명 이관, n/a=해당없음(+수동한계 항목 능동/AI 권장) · 고객용 컴플라이언스 리포트 뷰 신설(운영 대시보드 유지).
+**AI Response**: 구현 완료. (1) report DTO가 checked를 vulnerable(finding>0)/clean으로 분리, 심각도 히스토그램. (2) configs/coverage/kisa.yaml에 catalog: 26항목(title/description/category/activeHint) 추가 — 커널 LoadCoverageSpec은 무시, 신설 config.LoadCatalog만 읽음(단일 관리면). MappingTable.ItemCWEs로 PS→CWE 배지(중복 없음). (3) 신규 GET /api/report/{id}(authz) + GET /report(정적 셸, CSP) — 26/26 파티션 바 + 탐지 파이프라인 라우팅(chiller 판정 / Nuclei·ASM 이관 / 해당없음 / 점검불가) + 항목표(제목·KISA·CWE 배지·결과 chip·activeHint 힌트). 실 스캔(kbland.kr) 검증: vulnerable 3/clean 11/delegated 4(Nuclei·ASM)/na 7/tool_failed 1, findings 14. 로컬 게이트 green(build/vet/gofmt/arch-check/race 23pkg/gosec 0). 신규 테스트: catalog_test(실 config 전항목 커버+빈 섹션 무해), report_view_test(결과 도출+조인+요약). 정직성: n/a를 일괄 '이관'으로 바꾸지 않고 delegated(설계 이관)와 구분, activeHint만 '능동/AI 권장'.
+**Context**: CONSTRUCTION - customer compliance report UI (r11).
+
+---

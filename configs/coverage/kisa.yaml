@@ -35,3 +35,40 @@ delegations:
   PS-005: Nuclei  # error page info disclosure
   PS-006: Nuclei  # stack trace
   PS-026: Nuclei  # open redirect
+
+# ---------------------------------------------------------------------------
+# catalog: human-facing item metadata (title/description/category) for the
+# customer compliance report UI. Presentation-only — the accounting kernel
+# (LoadCoverageSpec) ignores this section entirely; only the API report view
+# (config.LoadCatalog) reads it. Kept in THIS file, not a separate one, so the
+# item set and its labels stay a single management surface (one file to edit
+# when the framework changes). `activeHint: true` marks items a passive engine
+# structurally cannot fully judge (JS/SPA, credential testing) → the report
+# suggests the active/AI stage, honestly, instead of implying a clean result.
+catalog:
+  PS-001: { title: "평문 전송 (HSTS 미적용)",        category: "전송 보안", description: "HTTPS 강제(HSTS)가 없어 평문 통신으로 다운그레이드될 수 있음" }
+  PS-002: { title: "취약한 TLS 설정",              category: "전송 보안", description: "구식 프로토콜/취약 암호군 등 안전하지 않은 TLS 구성" }
+  PS-003: { title: "평문(HTTP) 로그인 폼",          category: "인증/세션", description: "로그인 폼이 암호화되지 않은 http:// 로 전송됨", activeHint: true }
+  PS-004: { title: "디렉터리 목록 노출",            category: "정보 노출", description: "자동 인덱싱으로 디렉터리 파일 목록이 공개됨" }
+  PS-005: { title: "오류 페이지 정보 노출",          category: "정보 노출", description: "오류 응답에 내부 경로·구성 등 민감정보가 포함됨" }
+  PS-006: { title: "스택 트레이스 노출",            category: "정보 노출", description: "예외 스택 트레이스가 응답으로 그대로 노출됨" }
+  PS-007: { title: "서버 버전 정보 노출",           category: "정보 노출", description: "서버 배너에 제품/버전이 드러나 지문 채취가 쉬움" }
+  PS-008: { title: "robots.txt 민감 경로 노출",     category: "정보 노출", description: "robots.txt가 관리자·백업 등 민감 경로를 드러냄" }
+  PS-009: { title: "소스/주석 내 민감정보",          category: "정보 노출", description: "HTML 주석·JS 소스에 토큰·키 등 민감정보가 남아 있음" }
+  PS-010: { title: ".git 저장소 노출",             category: "정보 노출", description: "/.git 메타데이터가 공개되어 소스 복원이 가능" }
+  PS-011: { title: ".env 파일 노출",               category: "정보 노출", description: "환경설정(.env)이 공개되어 비밀키·자격증명이 유출" }
+  PS-012: { title: "백업 파일 노출",               category: "정보 노출", description: "백업/덤프 파일이 접근 가능한 경로에 방치됨" }
+  PS-013: { title: "관리자 페이지 인증 부재",        category: "접근 통제", description: "인증 없이 접근 가능한 관리자 페이지", activeHint: true }
+  PS-014: { title: "불필요한 HTTP 메서드 허용",      category: "설정 오류", description: "PUT/DELETE/TRACE 등 불필요한 메서드가 열려 있음" }
+  PS-015: { title: "쿠키 Secure 속성 누락",         category: "인증/세션", description: "Secure 미설정 쿠키가 평문 채널로 전송될 수 있음" }
+  PS-016: { title: "쿠키 HttpOnly 속성 누락",       category: "인증/세션", description: "HttpOnly 미설정으로 스크립트가 쿠키에 접근 가능" }
+  PS-017: { title: "쿠키 SameSite 속성 미흡",       category: "인증/세션", description: "SameSite 미설정/None으로 CSRF 노출" }
+  PS-018: { title: "URL 내 세션 식별자 노출",        category: "인증/세션", description: "세션 ID가 URL에 실려 로그·리퍼러로 유출됨" }
+  PS-019: { title: "기본 자격증명 사용",            category: "접근 통제", description: "변경되지 않은 기본 계정/비밀번호가 유효함", activeHint: true }
+  PS-020: { title: "프레임워크 버전 정보 노출",      category: "정보 노출", description: "프레임워크 버전이 드러나 알려진 취약점 매칭이 쉬움" }
+  PS-021: { title: "과도한 CORS 허용",             category: "설정 오류", description: "와일드카드/무검증 Origin으로 교차출처 접근을 허용" }
+  PS-022: { title: "crossdomain.xml 과도 허용",     category: "설정 오류", description: "crossdomain.xml이 모든 도메인(*) 접근을 허용" }
+  PS-023: { title: "로그인 CAPTCHA 부재",          category: "접근 통제", description: "로그인 폼에 자동화 방지(CAPTCHA)가 없음", activeHint: true }
+  PS-024: { title: "클릭재킹 방어 부재",            category: "설정 오류", description: "X-Frame-Options/CSP frame-ancestors 미설정" }
+  PS-025: { title: "서브도메인 탈취 가능",          category: "공격 표면", description: "미사용 DNS가 외부 서비스로 연결돼 탈취될 수 있음" }
+  PS-026: { title: "오픈 리다이렉트",              category: "설정 오류", description: "검증 없는 리다이렉트로 피싱에 악용될 수 있음" }
