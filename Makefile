@@ -1,4 +1,4 @@
-.PHONY: build test test-integration lint gosec secrets vuln sbom cover arch-check tidy dev-env ci
+.PHONY: build test test-integration lint gosec secrets vuln sbom cover arch-check tidy dev-env ci signatures signatures-check
 
 MODULE := github.com/hongsam14/chiller
 
@@ -86,6 +86,18 @@ arch-check:
 
 tidy:
 	go mod tidy
+
+# Regenerate the distilled signature config from the pinned third_party/ sources
+# (Arch A / Level 2 signature-ingestion pipeline). Reproducible: same pinned
+# sources → same configs/signatures/*.yaml.
+signatures:
+	go run ./tools/sigimport
+
+# CI drift-check: the committed config MUST match regeneration from the pinned
+# sources — catches a manual edit or a stale-after-source-bump config.
+signatures-check: signatures
+	@git diff --exit-code configs/signatures/ \
+		|| { echo "configs/signatures drift — run 'make signatures' and commit"; exit 1; }
 
 # Generates deploy/compose/.env with a fresh random evidence key. The repo ships no
 # key material, not even a throwaway one (see deploy/compose/.env.example).
