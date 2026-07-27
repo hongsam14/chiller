@@ -99,12 +99,18 @@ func (h *Handler) buildComplianceReport(rep report.Report) complianceReportDTO {
 	for _, f := range rep.Findings {
 		byKey[f.Key()] = f
 	}
-	labels := rep.FrameworkLabels[h.reportFramework()] // item → finding keys (may be nil)
+	// The framework is a per-scan choice: read it from the report, falling back to
+	// the handler default for older reports that predate the field.
+	fw := h.reportFramework()
+	if len(rep.Frameworks) > 0 && rep.Frameworks[0] != "" {
+		fw = rep.Frameworks[0]
+	}
+	labels := rep.FrameworkLabels[fw] // item → finding keys (may be nil)
 
 	dto := complianceReportDTO{
 		ScanID:          string(rep.ScanID),
 		Ready:           true,
-		Framework:       string(h.reportFramework()),
+		Framework:       string(fw),
 		MappingRevision: rep.MappingRevision,
 		Summary:         reportSummaryDTO{BySeverity: map[string]int{}},
 	}

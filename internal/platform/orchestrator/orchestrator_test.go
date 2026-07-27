@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/hongsam14/chiller/internal/domain"
@@ -215,7 +216,7 @@ func TestFoldOutcomes_PR5Rules(t *testing.T) {
 		NotApplicable: map[domain.CheckerID][]domain.CWE{"fake:na": {"CWE-527"}},
 	}}
 
-	so := o.foldOutcomes("s", ctx, outcomes)
+	so := o.foldOutcomes("s", ctx, outcomes, FrameworkRuntime{Mapper: compliance.New(mt)})
 
 	if !so.RanOK["fake:ok"] {
 		t.Errorf("applicable-ok checker should be RanOK")
@@ -307,6 +308,48 @@ func TestBootGate_FSEC_Passes(t *testing.T) {
 	}
 	if checked != 2 || delegated != 5 {
 		t.Errorf("FSEC partition = checked %d / delegated %d, want 2 / 5 (040,051 owned; 5 active delegated)", checked, delegated)
+	}
+}
+
+// TestCreateScan_FrameworkSelection: a scan records the requested framework
+// (default when omitted), and an unknown framework is rejected as a bad request.
+func TestCreateScan_FrameworkSelection(t *testing.T) {
+	store := taskstore.New()
+	n := 0
+	o := New(Config{
+		Store:            store,
+		Ingestor:         ingest.New(),
+		NewID:            func() domain.ScanID { n++; return domain.ScanID("s" + string(rune('0'+n))) },
+		Clock:            func() domain.Timestamp { return 0 },
+		DefaultFramework: domain.FrameworkKISA,
+		FrameworkRuntimes: map[domain.Framework]FrameworkRuntime{
+			domain.FrameworkFSEC: {}, // registered → selectable
+		},
+	})
+	ctx := context.Background()
+	req := ingest.ScanRequest{URLs: []string{"https://a.test/"}, Approved: []string{"a.test"}}
+
+	// Omitted framework → default.
+	id, err := o.CreateScan(ctx, req)
+	if err != nil {
+		t.Fatalf("default create: %v", err)
+	}
+	if s, _ := store.LoadScan(ctx, id); len(s.Frameworks) != 1 || s.Frameworks[0] != domain.FrameworkKISA {
+		t.Errorf("default framework not recorded: %v", s.Frameworks)
+	}
+
+	// Explicit registered framework.
+	id2, err := o.CreateScan(ctx, req, domain.FrameworkFSEC)
+	if err != nil {
+		t.Fatalf("FSEC create: %v", err)
+	}
+	if s, _ := store.LoadScan(ctx, id2); len(s.Frameworks) != 1 || s.Frameworks[0] != domain.FrameworkFSEC {
+		t.Errorf("FSEC framework not recorded: %v", s.Frameworks)
+	}
+
+	// Unknown framework → bad request.
+	if _, err := o.CreateScan(ctx, req, domain.Framework("NOPE")); !errors.Is(err, platform.ErrBadRequest) {
+		t.Errorf("unknown framework must be ErrBadRequest, got %v", err)
 	}
 }
 

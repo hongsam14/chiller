@@ -31,7 +31,12 @@ type Report struct {
 	// only. framework → item → the keys of the findings that carry it. Resolve a
 	// key against Findings with domain.Finding.Key().
 	FrameworkLabels map[domain.Framework]map[string][]domain.FindingKey
-	SchemaVersion   int
+	// Frameworks is the accounting framework(s) this report was built for — the
+	// Coverage is that framework's item partition. A consumer (e.g. the report view)
+	// reads it to know which framework's labels/catalog to project, since the
+	// framework is now a per-scan choice, not a process-global.
+	Frameworks    []domain.Framework `bson:"frameworks,omitempty" json:"frameworks,omitempty"`
+	SchemaVersion int
 }
 
 // Builder is the ReportBuilder seam (NFR-01).
@@ -61,6 +66,7 @@ func (b *builder) Build(scanID domain.ScanID, findings []domain.Finding, cov dom
 		Coverage:        cov,
 		MappingRevision: b.mapper.Revision(),
 		FrameworkLabels: labels,
+		Frameworks:      frameworks,
 		SchemaVersion:   ReportSchemaVersion,
 	}
 }

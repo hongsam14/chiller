@@ -1346,3 +1346,10 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: CONSTRUCTION - report finding drill-down (r13).
 
 ---
+## 요청 단위 프레임워크 선택 (r14)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "1. 요청 단위 프레임워크 선택"
+**AI Response**: POST /scans에 framework 필드 추가(생략 시 서버 기본, 미지값→400). 스캔이 프레임워크 저장→finalize가 프레임워크별 FrameworkRuntime(accountant+mapper+reportBuilder)로 회계/리포트. report.Report에 Frameworks 기록→/api/report가 스캔 프레임워크로 라벨/카탈로그 투영. cmd가 configs/coverage/*.yaml 자동 탐색해 프레임워크별 런타임 등록(보조 프레임워크 boot gate 실패 시 skip, 기본은 유지). 머지 대신 런타임 분리(KISA attacker-axis PS-025 누수 회피); 카탈로그/CWE배지는 disjoint PS-ID라 union. CreateScan variadic(fw ...Framework)로 back-compat(2-arg 호출 무영향). 라이브 검증: 한 서버에서 KISA(26)/FSEC(7) 요청별 선택, NOPE→400. 게이트 green(23pkg, gosec 0). 신규 TestCreateScan_FrameworkSelection.
+**Context**: CONSTRUCTION - per-request framework selection (r14).
+
+---

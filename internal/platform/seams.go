@@ -150,7 +150,7 @@ type AuthProxy interface {
 // over the injected seams + the scan Executor + the findings pipeline; it is
 // backend-agnostic and never changes when a seam impl is swapped.
 type Orchestrator interface {
-	CreateScan(ctx context.Context, req ScanRequest) (domain.ScanID, error)
+	CreateScan(ctx context.Context, req ScanRequest, fw ...domain.Framework) (domain.ScanID, error)
 	StartScan(ctx context.Context, id domain.ScanID) error
 	ResumeScan(ctx context.Context, id domain.ScanID) error
 	StopScan(ctx context.Context, id domain.ScanID) error
