@@ -77,7 +77,6 @@ const reportHTML = `<!doctype html>
   <h1>KISA 컴플라이언스 리포트</h1>
   <button id="print">인쇄 / PDF</button>
 </div>
-<p class="sub">수동 관측(passive) 엔진의 점검 결과. 모든 컴플라이언스 항목이 빠짐없이 분류·회계됩니다.</p>
 <div class="row noprint">
   <input id="tok" type="password" placeholder="API 토큰 (Bearer)" size="26">
   <input id="scanId" placeholder="scan id" size="26">
@@ -94,8 +93,7 @@ const reportHTML = `<!doctype html>
     <div class="sev" id="sev"></div>
   </div>
 
-  <h2>탐지 파이프라인 — 각 항목을 "누가" 담당하는가</h2>
-  <p class="sub">이 엔진이 직접 판정하지 않는 항목은 실패·누락이 아니라, 설계상 적합한 엔진으로 라우팅되거나 이 대상에 조건이 없어 해당되지 않는 것입니다.</p>
+  <h2>탐지 파이프라인</h2>
   <div class="pipe" id="pipe"></div>
 
   <h2>점검 항목 (26)</h2>
