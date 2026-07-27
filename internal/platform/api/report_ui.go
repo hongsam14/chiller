@@ -74,7 +74,7 @@ const reportHTML = `<!doctype html>
 </head>
 <body>
 <div class="row noprint" style="justify-content:space-between">
-  <h1>KISA 컴플라이언스 리포트</h1>
+  <h1>컴플라이언스 리포트</h1>
   <button id="print">인쇄 / PDF</button>
 </div>
 <div class="row noprint">
@@ -106,7 +106,7 @@ const reportHTML = `<!doctype html>
 
 <script>
 (function () {
-  var ENGINE = { "Nuclei": "Nuclei 템플릿 분석 엔진", "ASM": "ASM 공격표면 관리 엔진" };
+  var ENGINE = { "Nuclei": "Nuclei 템플릿 분석 엔진", "ASM": "ASM 공격표면 관리 엔진", "ActiveScan": "능동/AI 동적 스캐너" };
   var RESULT = {
     vulnerable:    { chip: "취약 발견", cls: "c-vuln",  sw: "vuln"  },
     clean:         { chip: "양호",      cls: "c-clean", sw: "clean" },

@@ -13,6 +13,8 @@
 # their CWEs). The other five are active/dynamic (injection, authenticated replay,
 # multi-account) and are DELEGATED — never claimed as covered here. The boot gate
 # would otherwise refuse to start (no owner) rather than report a false clean.
+framework: FSEC
+
 items:
   - WEB-SER-040
   - WEB-SER-041

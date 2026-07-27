@@ -1332,3 +1332,10 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: CONSTRUCTION - customer compliance report UI (r11).
 
 ---
+## FSEC 프레임워크 배선 (r12)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "배선까지 진행해줘."
+**AI Response**: FSEC를 실행 시스템에 배선. CoverageSpec에 Framework 필드 추가(coverage yaml의 framework: 필드로 선언, 미설정 시 KISA 기본) — coverage.New 시그니처 불변(테스트 9곳 무영향). accountant가 spec.FrameworkOrDefault()로 소유 CWE 투영; Accountant.Framework() 접근자; finalize N/A 투영도 동일 프레임워크 사용(nil-safe). api WithFramework + report_view가 선택 프레임워크의 FrameworkLabels 사용. cmd가 coverage 파일에서 framework를 읽어 Frameworks/itemCWEs/WithFramework에 전달 — 프레임워크 전환 = --coverage/--mapping 두 플래그만 fsec 파일로. domain에 FrameworkFSEC + DelegateActiveScan 상수. fsec 매핑에 P5 totality 행(소유 CWE 전부 known, 무관 항목은 FSEC:[]) 추가 — 없으면 boot 거부. 리포트 UI ENGINE 맵에 ActiveScan="능동/AI 동적 스캐너". 검증: TestBootGate_FSEC_Passes(실 config+전체 checker, checked 2/delegated 5 유효 파티션), 로컬 end-to-end(chiller --coverage=fsec --mapping=fsec, example.com 스캔 → 7항목, 040 clean, 041/046/052 Nuclei, 048/049 ActiveScan, CWE 배지 정확). KISA 기본 불변(26항목). 로컬 게이트 green(build/vet/gofmt/arch-check/race 23pkg/gosec 0).
+**Context**: CONSTRUCTION - FSEC framework wiring (r12).
+
+---

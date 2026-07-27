@@ -7,6 +7,7 @@ import (
 	"github.com/hongsam14/chiller/internal/domain"
 	"github.com/hongsam14/chiller/internal/findings/compliance"
 	fconfig "github.com/hongsam14/chiller/internal/findings/config"
+	"github.com/hongsam14/chiller/internal/findings/coverage"
 	"github.com/hongsam14/chiller/internal/platform"
 	"github.com/hongsam14/chiller/internal/platform/taskstore"
 	"github.com/hongsam14/chiller/internal/scan/checking/observation"
@@ -250,6 +251,62 @@ func TestBootGate_RealConfig_Passes(t *testing.T) {
 	}
 	if acc == nil || mapper == nil {
 		t.Fatal("boot gate returned nil accountant/mapper")
+	}
+}
+
+// TestBootGate_FSEC_Passes wires the SECOND framework (FSEC) end-to-end through
+// the real boot gate: the full passive checker set + the fsec mapping/coverage.
+// It must boot (P5 totality holds via the empty-projection rows) and produce the
+// honest partition — 040/051 owned+accounted, the five active items delegated.
+func TestBootGate_FSEC_Passes(t *testing.T) {
+	const (
+		fsecMap = "../../../configs/mappings/fsec.yaml"
+		fsecCov = "../../../configs/coverage/fsec.yaml"
+	)
+	mt, err := fconfig.LoadMappingFile(fsecMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := fconfig.LoadCoverageSpecFile(fsecCov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.FrameworkOrDefault() != domain.FrameworkFSEC {
+		t.Fatalf("fsec coverage framework = %q, want FSEC", spec.FrameworkOrDefault())
+	}
+	var checkers []domain.Checker
+	checkers = append(checkers, observation.Checkers(observation.Default())...)
+	for _, p := range probe.Default() {
+		checkers = append(checkers, p)
+	}
+	acc, _, err := BootGate(checkers, mt, spec)
+	if err != nil {
+		t.Fatalf("FSEC boot gate should pass with real config + full checkers: %v", err)
+	}
+	if acc.Framework() != domain.FrameworkFSEC {
+		t.Errorf("accountant framework = %q, want FSEC", acc.Framework())
+	}
+	// With every owner ranking OK, the two passive items are Checked and the five
+	// active items are Delegated — a valid 7-item partition.
+	so := coverage.ScanOutcome{RanOK: map[domain.CheckerID]bool{}}
+	for _, c := range checkers {
+		so.RanOK[c.ID()] = true
+	}
+	cov := acc.Account(so)
+	if err := cov.Validate(spec); err != nil {
+		t.Fatalf("FSEC coverage is not a valid partition: %v", err)
+	}
+	var checked, delegated int
+	for _, rec := range cov {
+		switch rec.Status {
+		case domain.StatusChecked:
+			checked++
+		case domain.StatusDelegated:
+			delegated++
+		}
+	}
+	if checked != 2 || delegated != 5 {
+		t.Errorf("FSEC partition = checked %d / delegated %d, want 2 / 5 (040,051 owned; 5 active delegated)", checked, delegated)
 	}
 }
 

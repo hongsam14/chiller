@@ -12,6 +12,7 @@ import (
 type coverageFile struct {
 	Items       []string          `yaml:"items"`
 	Delegations map[string]string `yaml:"delegations"`
+	Framework   string            `yaml:"framework"`
 }
 
 // LoadCoverageSpec parses the coverage config (item set + delegations) into a
@@ -33,7 +34,7 @@ func LoadCoverageSpec(r io.Reader) (domain.CoverageSpec, error) {
 	for id, target := range f.Delegations {
 		dels[domain.PSID(id)] = domain.DelegateTarget(target)
 	}
-	return domain.CoverageSpec{Items: items, Delegations: dels}, nil
+	return domain.CoverageSpec{Items: items, Delegations: dels, Framework: domain.Framework(f.Framework)}, nil
 }
 
 // LoadCoverageSpecFile is a path convenience over LoadCoverageSpec.

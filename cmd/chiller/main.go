@@ -126,7 +126,7 @@ func run(f flags) error {
 	// An unwired probe owns its items but executes nothing, so they are reported
 	// tool-failed (no verdict). Say so at boot: an operator must never read a
 	// report as "clean" for items no tool examined.
-	log.Printf("boot gate OK: all %d KISA items have an owner", len(spec.Items))
+	log.Printf("boot gate OK: all %d %s items have an owner (or delegation)", len(spec.Items), spec.FrameworkOrDefault())
 	var unwired []string
 	for _, p := range probeAdapters {
 		if !p.Wired() {
@@ -165,7 +165,7 @@ func run(f flags) error {
 		Cache:         be.cache,
 		Metrics:       metrics,
 		CacheStats:    be.stats,
-		Frameworks:    []domain.Framework{domain.FrameworkKISA},
+		Frameworks:    []domain.Framework{spec.FrameworkOrDefault()},
 		HTTPClient:    &http.Client{},
 		Workers:       f.workers,
 		Clock:         func() domain.Timestamp { return domain.Timestamp(time.Now().UnixMilli()) },
@@ -252,14 +252,20 @@ func serveAPI(ctx context.Context, f flags, orch *orchestrator.Orchestrator, be 
 	}
 	// Presentation metadata for the customer compliance report (/report). Both are
 	// best-effort: a missing catalog/mapping degrades the report to bare PS-IDs with
-	// no CWE badges rather than failing the API — the accounting is unaffected.
+	// no CWE badges rather than failing the API — the accounting is unaffected. The
+	// report view must project onto the SAME framework the accountant uses, read
+	// from the coverage file so it tracks the --coverage/--mapping selection.
+	fw := domain.FrameworkKISA
+	if sp, serr := fconfig.LoadCoverageSpecFile(f.coveragePath); serr == nil {
+		fw = sp.FrameworkOrDefault()
+	}
 	catalog, err := fconfig.LoadCatalogFile(f.coveragePath)
 	if err != nil {
 		log.Printf("WARNING: catalog load (%s): %v — compliance report shows bare PS-IDs", f.coveragePath, err)
 	}
 	var itemCWEs map[domain.PSID][]domain.CWE
 	if mt, merr := fconfig.LoadMappingFile(f.mappingPath); merr == nil {
-		itemCWEs = mt.ItemCWEs(domain.FrameworkKISA)
+		itemCWEs = mt.ItemCWEs(fw)
 	} else {
 		log.Printf("WARNING: mapping load for CWE badges (%s): %v", f.mappingPath, merr)
 	}
@@ -271,6 +277,7 @@ func serveAPI(ctx context.Context, f flags, orch *orchestrator.Orchestrator, be 
 		api.WithPersistenceStats(persistenceStats{metrics: metrics, stats: be.stats, retry: be.retry}),
 		api.WithCatalog(catalog),
 		api.WithItemCWEs(itemCWEs),
+		api.WithFramework(fw),
 	)
 	// ReadHeaderTimeout bounds header-read time so a client that dribbles headers
 	// cannot hold a connection open indefinitely (Slowloris). 10s is generous

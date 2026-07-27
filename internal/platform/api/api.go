@@ -61,8 +61,17 @@ type Handler struct {
 	persist   PersistenceStats // for /api/introspect/persistence
 	// compliance report view (customer-facing) — presentation metadata joined into
 	// the enriched report. Empty maps degrade gracefully (bare PS-IDs, no CWE badges).
-	catalog  map[domain.PSID]config.ItemMeta
-	itemCWEs map[domain.PSID][]domain.CWE
+	catalog   map[domain.PSID]config.ItemMeta
+	itemCWEs  map[domain.PSID][]domain.CWE
+	framework domain.Framework // which framework's labels the report view reads; "" ⇒ KISA
+}
+
+// reportFramework is the framework the report view projects onto (default KISA).
+func (h *Handler) reportFramework() domain.Framework {
+	if h.framework == "" {
+		return domain.FrameworkKISA
+	}
+	return h.framework
 }
 
 // PersistenceStats is what the persistence introspection endpoint reports. It is
@@ -145,6 +154,12 @@ func WithCatalog(catalog map[domain.PSID]config.ItemMeta) Option {
 // badges, derived from the mapping table (no config duplication).
 func WithItemCWEs(cwes map[domain.PSID][]domain.CWE) Option {
 	return func(h *Handler) { h.itemCWEs = cwes }
+}
+
+// WithFramework selects which accounting framework the compliance report view
+// projects onto (must match the accountant's framework). Default KISA.
+func WithFramework(fw domain.Framework) Option {
+	return func(h *Handler) { h.framework = fw }
 }
 
 // scanRequestDTO is the wire shape for POST /scans (JSON-tagged, so the scan
