@@ -69,12 +69,19 @@ const reportHTML = `<!doctype html>
   .c-fail { color: #fff; background: var(--fail); }
   .hint { color: var(--deleg); font-size: 0.74rem; display: block; margin-top: 0.2rem; }
   .cat { color: var(--muted); font-size: 0.75rem; }
+  .toggle { color: var(--deleg); font-size: 0.74rem; cursor: pointer; user-select: none; white-space: nowrap; }
+  .detail-row td { background: var(--card); }
+  .finding { border-left: 3px solid var(--vuln); padding: 0.4rem 0.7rem; margin: 0.35rem 0; }
+  .f-head { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+  .f-tool { font-size: 0.78rem; font-weight: 600; }
+  .f-url { font-size: 0.78rem; color: var(--deleg); word-break: break-all; margin: 0.25rem 0; }
+  .f-ev { margin: 0.2rem 0 0; padding: 0.4rem 0.6rem; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 0.76rem; white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
   @media print { .noprint { display: none; } body { padding: 0; } .hero, .stage { break-inside: avoid; } }
 </style>
 </head>
 <body>
 <div class="row noprint" style="justify-content:space-between">
-  <h1>컴플라이언스 리포트</h1>
+  <h1>컴플라이언스 정찰 리포트</h1>
   <button id="print">인쇄 / PDF</button>
 </div>
 <div class="row noprint">
@@ -96,7 +103,7 @@ const reportHTML = `<!doctype html>
   <h2>탐지 파이프라인</h2>
   <div class="pipe" id="pipe"></div>
 
-  <h2>점검 항목 (26)</h2>
+  <h2 id="itemsHdr">점검 항목</h2>
   <table>
     <thead><tr><th>항목</th><th>제목</th><th>표준 매핑</th><th>결과</th></tr></thead>
     <tbody id="rows"></tbody>
@@ -172,6 +179,8 @@ const reportHTML = `<!doctype html>
     stage("🟠 점검 불가 (도구 미가용)", items.filter(function (i){return i.result==="tool_failed";}));
 
     // item table
+    var fw = d.framework || "KISA";
+    set("itemsHdr", "점검 항목 (" + total + ") · " + fw);
     var rows = document.getElementById("rows"); rows.textContent = "";
     items.forEach(function (i) {
       var tr = el("tr");
@@ -179,15 +188,43 @@ const reportHTML = `<!doctype html>
       var c2 = el("td"); c2.appendChild(document.createTextNode(i.title || i.psid));
       if (i.description) { var ds = el("div","sub", i.description); c2.appendChild(ds); }
       var c3 = el("td");
-      c3.appendChild(el("span","badge","KISA " + i.psid));
+      c3.appendChild(el("span","badge", fw + " " + i.psid));
       (i.cwes||[]).forEach(function (c){ if (c && c !== "no-canonical-cwe") c3.appendChild(el("span","badge", c)); });
       var c4 = el("td");
       var r = RESULT[i.result] || RESULT.tool_failed;
+      var hasDetail = i.result === "vulnerable" && (i.details||[]).length;
       var chip = el("span", "chip " + r.cls, r.chip + (i.result==="vulnerable" && i.topSeverity ? " · " + i.topSeverity : "") + (i.result==="delegated" && ENGINE[i.delegateTo] ? " → " + i.delegateTo : ""));
       c4.appendChild(chip);
+      if (hasDetail) { var tog = el("span","toggle", " ▶ 상세 " + i.details.length); c4.appendChild(tog); }
       if (i.result==="not_applicable" && i.activeHint) c4.appendChild(el("span","hint","능동/AI 스캐너 단계에서 재확인 권장"));
       tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4);
       rows.appendChild(tr);
+
+      // Drill-down: a full-width detail row per vulnerable item, toggled by the chip.
+      if (hasDetail) {
+        var dr = el("tr", "detail-row"); dr.style.display = "none";
+        var dc = el("td"); dc.colSpan = 4;
+        i.details.forEach(function (f) {
+          var box = el("div", "finding");
+          var head = el("div", "f-head");
+          head.appendChild(el("span", "chip c-vuln", f.severity));
+          head.appendChild(el("span", "f-tool", f.sourceTool || ""));
+          (f.cwes||[]).forEach(function (c){ if (c && c !== "no-canonical-cwe") head.appendChild(el("span","badge", c)); });
+          box.appendChild(head);
+          if (f.targetUrl) { var u = el("div","f-url"); u.textContent = f.targetUrl; box.appendChild(u); }
+          (f.evidence||[]).forEach(function (ev) { box.appendChild(el("pre","f-ev", ev)); });
+          dc.appendChild(box);
+        });
+        dr.appendChild(dc); rows.appendChild(dr);
+        (function (row, toggle) {
+          c4.style.cursor = "pointer";
+          c4.addEventListener("click", function () {
+            var open = row.style.display === "none";
+            row.style.display = open ? "" : "none";
+            if (toggle) toggle.textContent = (open ? " ▼ 상세 " : " ▶ 상세 ") + i.details.length;
+          });
+        })(dr, c4.querySelector(".toggle"));
+      }
     });
   }
 

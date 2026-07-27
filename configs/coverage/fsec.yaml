@@ -28,9 +28,9 @@ items:
 # Nuclei      = 템플릿 기반 동적 탐지(반사형 XSS·SSRF·SSTI 페이로드).
 # ActiveScan  = 능동/AI 동적 스캐너(인증 세션 재생·다계정 인가 검증 — 템플릿으로 불가).
 delegations:
-  WEB-SER-041: Nuclei      # XSS
-  WEB-SER-046: Nuclei      # SSRF
   WEB-SER-052: Nuclei      # SSTI
+  WEB-SER-041: ActiveScan  # XSS
+  WEB-SER-046: ActiveScan  # SSRF
   WEB-SER-048: ActiveScan  # 세션정보 재사용 (로그인 후 세션 재생 필요)
   WEB-SER-049: ActiveScan  # 인증수단 소유자 검증 (타 계정 인증수단 필요)
 

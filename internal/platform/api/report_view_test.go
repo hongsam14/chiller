@@ -48,6 +48,19 @@ func TestBuildComplianceReport_DerivesResultsAndJoins(t *testing.T) {
 	if got := byID["PS-011"]; got.Result != resultVulnerable || got.TopSeverity != "critical" || got.Findings != 1 {
 		t.Errorf("PS-011 want vulnerable/critical/1, got %s/%s/%d", got.Result, got.TopSeverity, got.Findings)
 	}
+	// Drill-down: the vulnerable item carries the concrete finding detail.
+	if got := byID["PS-011"]; len(got.Details) != 1 ||
+		got.Details[0].TargetURL != "https://h/.env" ||
+		got.Details[0].SourceTool != "observation:CWE-538" ||
+		got.Details[0].Severity != "critical" {
+		t.Errorf("PS-011 detail drill-down wrong: %+v", got.Details)
+	}
+	if got := byID["PS-002"]; len(got.Details) != 0 {
+		t.Errorf("clean item must carry no finding details, got %+v", got.Details)
+	}
+	if dto.Framework != "KISA" {
+		t.Errorf("report framework = %q, want KISA (default)", dto.Framework)
+	}
 	if got := byID["PS-011"]; got.Title != ".env 노출" || len(got.CWEs) != 1 || got.CWEs[0] != "CWE-538" {
 		t.Errorf("PS-011 catalog/CWE join wrong: %+v", got)
 	}

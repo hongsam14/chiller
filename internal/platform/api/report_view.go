@@ -28,18 +28,29 @@ const (
 	resultToolFailed    = "tool_failed"    // the owning tool could not run → no verdict
 )
 
+// findingDTO is one concrete finding under an item — the evidence a customer
+// drills into to confirm a vulnerability (which URL, which tool, what was seen).
+type findingDTO struct {
+	TargetURL  string   `json:"targetUrl"`
+	SourceTool string   `json:"sourceTool"`
+	Severity   string   `json:"severity"`
+	CWEs       []string `json:"cwes"`
+	Evidence   []string `json:"evidence,omitempty"`
+}
+
 type reportItemDTO struct {
-	PSID        string   `json:"psid"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Category    string   `json:"category"`
-	CWEs        []string `json:"cwes"`
-	Status      string   `json:"status"` // raw accounting status
-	Result      string   `json:"result"` // derived customer-facing result
-	DelegateTo  string   `json:"delegateTo,omitempty"`
-	Findings    int      `json:"findings"`
-	TopSeverity string   `json:"topSeverity,omitempty"`
-	ActiveHint  bool     `json:"activeHint,omitempty"`
+	PSID        string       `json:"psid"`
+	Title       string       `json:"title"`
+	Description string       `json:"description"`
+	Category    string       `json:"category"`
+	CWEs        []string     `json:"cwes"`
+	Status      string       `json:"status"` // raw accounting status
+	Result      string       `json:"result"` // derived customer-facing result
+	DelegateTo  string       `json:"delegateTo,omitempty"`
+	Findings    int          `json:"findings"`
+	TopSeverity string       `json:"topSeverity,omitempty"`
+	ActiveHint  bool         `json:"activeHint,omitempty"`
+	Details     []findingDTO `json:"details,omitempty"` // the item's findings (for drill-down)
 }
 
 type reportSummaryDTO struct {
@@ -56,6 +67,7 @@ type reportSummaryDTO struct {
 type complianceReportDTO struct {
 	ScanID          string           `json:"scanId"`
 	Ready           bool             `json:"ready"`
+	Framework       string           `json:"framework"`
 	MappingRevision string           `json:"mappingRevision,omitempty"`
 	Summary         reportSummaryDTO `json:"summary"`
 	Items           []reportItemDTO  `json:"items"`
@@ -92,6 +104,7 @@ func (h *Handler) buildComplianceReport(rep report.Report) complianceReportDTO {
 	dto := complianceReportDTO{
 		ScanID:          string(rep.ScanID),
 		Ready:           true,
+		Framework:       string(h.reportFramework()),
 		MappingRevision: rep.MappingRevision,
 		Summary:         reportSummaryDTO{BySeverity: map[string]int{}},
 	}
@@ -109,10 +122,22 @@ func (h *Handler) buildComplianceReport(rep report.Report) complianceReportDTO {
 
 		keys := labels[id]
 		topSev, sevName := domain.SevUnset, ""
+		var details []findingDTO
 		for _, k := range keys {
-			if f, ok := byKey[k]; ok && f.Severity > topSev {
+			f, ok := byKey[k]
+			if !ok {
+				continue
+			}
+			if f.Severity > topSev {
 				topSev = f.Severity
 			}
+			details = append(details, findingDTO{
+				TargetURL:  f.TargetURL,
+				SourceTool: f.SourceTool,
+				Severity:   f.Severity.String(),
+				CWEs:       cweStrings(f.CWEs),
+				Evidence:   f.Evidence.Snippets,
+			})
 		}
 		if topSev != domain.SevUnset {
 			sevName = topSev.String()
@@ -129,6 +154,7 @@ func (h *Handler) buildComplianceReport(rep report.Report) complianceReportDTO {
 			Findings:    len(keys),
 			TopSeverity: sevName,
 			ActiveHint:  meta.ActiveHint,
+			Details:     details,
 		}
 		item.Result = deriveResult(rec.Status, len(keys))
 		dto.Items = append(dto.Items, item)
