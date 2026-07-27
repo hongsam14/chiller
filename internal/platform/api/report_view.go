@@ -87,7 +87,7 @@ func (h *Handler) buildComplianceReport(rep report.Report) complianceReportDTO {
 	for _, f := range rep.Findings {
 		byKey[f.Key()] = f
 	}
-	labels := rep.FrameworkLabels[domain.FrameworkKISA] // item → finding keys (may be nil)
+	labels := rep.FrameworkLabels[h.reportFramework()] // item → finding keys (may be nil)
 
 	dto := complianceReportDTO{
 		ScanID:          string(rep.ScanID),

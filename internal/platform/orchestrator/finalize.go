@@ -105,6 +105,13 @@ func (o *Orchestrator) foldOutcomes(id domain.ScanID, ctx context.Context, outco
 	// this fold exists to prevent.
 	itemByID := o.itemsByID(ctx, id)
 
+	// The N/A projection must use the accounting framework so its PS-IDs line up
+	// with the coverage. Default KISA when no accountant is wired (fold-only tests).
+	fw := domain.FrameworkKISA
+	if o.cfg.Accountant != nil {
+		fw = o.cfg.Accountant.Framework()
+	}
+
 	appliedOK := map[domain.CheckerID]bool{}
 	failedOnly := map[domain.CheckerID]bool{}
 	naCWEs := map[domain.CheckerID]map[domain.CWE]bool{}
@@ -153,7 +160,7 @@ func (o *Orchestrator) foldOutcomes(id domain.ScanID, ctx context.Context, outco
 			continue
 		}
 		for w := range cwes {
-			for _, item := range o.cfg.Mapper.Project([]domain.CWE{w}, domain.FrameworkKISA) {
+			for _, item := range o.cfg.Mapper.Project([]domain.CWE{w}, fw) {
 				if so.NotApplicable[cid] == nil {
 					so.NotApplicable[cid] = map[domain.PSID]bool{}
 				}

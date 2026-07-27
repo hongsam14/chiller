@@ -1,6 +1,8 @@
 # The KISA accounting set + delegations — loaded into domain.CoverageSpec.
 # This is the customer-changeable "which items do we account" surface (refactor
 # B): editing it never touches the kernel.
+framework: KISA
+
 items:
   - PS-001
   - PS-002

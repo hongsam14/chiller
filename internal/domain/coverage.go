@@ -72,6 +72,19 @@ type Coverage map[PSID]ItemRecord
 type CoverageSpec struct {
 	Items       []PSID                  // the full expected item set for this scan's framework
 	Delegations map[PSID]DelegateTarget // fixed delegations (R6): item → the stage that covers it
+	// Framework names which projection the accountant uses to map owned CWEs → these
+	// items (the mapping file must carry that framework's columns). Empty means
+	// FrameworkKISA — the historical default, so pre-existing specs are unchanged.
+	Framework Framework
+}
+
+// FrameworkOrDefault returns the spec's framework, defaulting to KISA when unset
+// (so a coverage file that omits `framework:` keeps the legacy behaviour).
+func (s CoverageSpec) FrameworkOrDefault() Framework {
+	if s.Framework == "" {
+		return FrameworkKISA
+	}
+	return s.Framework
 }
 
 // Validate enforces rule R5 (totality over spec.Items + disjoint 4-state

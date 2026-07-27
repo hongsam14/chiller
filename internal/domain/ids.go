@@ -68,6 +68,9 @@ const (
 	FrameworkKISA  Framework = "KISA"
 	FrameworkOWASP Framework = "OWASP"
 	FrameworkCAPEC Framework = "CAPEC"
+	// FrameworkFSEC is the 전자금융/기반시설 web assessment (과기정통부 고시 2025-0832),
+	// a second accounting framework selected per scan via its own coverage+mapping.
+	FrameworkFSEC Framework = "FSEC"
 )
 
 // DelegateTarget names the stage a delegated item is covered by (FR-11).
@@ -76,6 +79,10 @@ type DelegateTarget string
 const (
 	DelegateASM    DelegateTarget = "ASM"    // PS-014
 	DelegateNuclei DelegateTarget = "Nuclei" // PS-005, PS-006, PS-026
+	// DelegateActiveScan is the active/AI dynamic scanner stage — for items a
+	// passive engine structurally cannot judge (authenticated replay, multi-account
+	// authorization). Used by FSEC WEB-SER-048/049.
+	DelegateActiveScan DelegateTarget = "ActiveScan"
 )
 
 // ScanID and WorkItemID identify a scan aggregate and a fan-out work item.

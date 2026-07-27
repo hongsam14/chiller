@@ -32,3 +32,24 @@ map:
   CWE-311:  { FSEC: [WEB-SER-051] }   # 미암호화 전송(평문 로그인) — observation (owned)
   # --- WEB-SER-052 SSTI ---
   CWE-1336: { FSEC: [WEB-SER-052] }   # 서버 사이드 템플릿 인젝션 (동적 → Nuclei)
+
+  # --- P5 totality: every CHECKER-owned CWE must be KNOWN to the active mapping,
+  # even when it projects to NO item in this framework. These passive checks
+  # (robots/cookies/clickjacking/version/CORS/etc.) still run, but own nothing in
+  # FSEC, so they map to an empty item list. Without these rows coverage.New would
+  # reject startup ("owns unmapped CWE") — the FSEC scan could not boot. ---
+  CWE-1021: { FSEC: [] }   # clickjacking (humble)
+  CWE-693:  { FSEC: [] }   # version disclosure (httpx)
+  CWE-614:  { FSEC: [] }   # cookie Secure (observation)
+  CWE-1004: { FSEC: [] }   # cookie HttpOnly (observation)
+  CWE-1275: { FSEC: [] }   # cookie SameSite (observation)
+  CWE-651:  { FSEC: [] }   # robots.txt (observation)
+  CWE-615:  { FSEC: [] }   # sensitive comment (observation)
+  CWE-527:  { FSEC: [] }   # .git exposure (observation)
+  CWE-306:  { FSEC: [] }   # admin no-auth (observation)
+  CWE-598:  { FSEC: [] }   # session id in URL (observation)
+  CWE-942:  { FSEC: [] }   # crossdomain.xml (observation)
+  CWE-799:  { FSEC: [] }   # captcha absence (observation)
+  CWE-798:  { FSEC: [] }   # default credentials (changeme)
+  CWE-346:  { FSEC: [] }   # permissive CORS (corsy)
+  no-canonical-cwe: { FSEC: [] }  # attacker-axis sentinel (subzy) — never silence (R8)
