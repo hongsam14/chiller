@@ -41,6 +41,50 @@ func finding(cwe domain.CWE, url string, sev domain.Severity, evidence string) d
 	}
 }
 
+// maxEvidenceLen bounds a captured evidence snippet (FR-12/NFR-16): evidence must
+// carry the ACTUAL matched data so a human or an AI can judge whether it is a real
+// exposure or a false positive — but never an unbounded page dump.
+const maxEvidenceLen = 200
+
+var wsRun = regexp.MustCompile(`\s+`)
+
+// snippet turns matched bytes into a single-line, rune-safe, length-bounded piece
+// of real evidence (the actual matched content, not a description of it).
+func snippet(b []byte) string {
+	s := wsRun.ReplaceAllString(strings.TrimSpace(string(b)), " ")
+	if r := []rune(s); len(r) > maxEvidenceLen {
+		s = string(r[:maxEvidenceLen]) + "…"
+	}
+	return s
+}
+
+// matchContext returns a padded, cleaned window of body around re's first match —
+// the matched text plus a little surrounding context — or "" when there is none
+// (so it doubles as the match test).
+func matchContext(body []byte, re *regexp.Regexp, pad int) string {
+	loc := re.FindIndex(body)
+	if loc == nil {
+		return ""
+	}
+	start, end := loc[0]-pad, loc[1]+pad
+	if start < 0 {
+		start = 0
+	}
+	if end > len(body) {
+		end = len(body)
+	}
+	return snippet(body[start:end])
+}
+
+// withData appends the actual matched evidence to a label so the report shows
+// "<what was detected> — <the real data>", the input a human/AI judges on.
+func withData(label, data string) string {
+	if data == "" {
+		return label
+	}
+	return label + " — " + data
+}
+
 var passwordField = regexp.MustCompile(`(?i)<input[^>]+type\s*=\s*["']?password`)
 
 func hasPasswordField(body string) bool {
@@ -80,14 +124,17 @@ func (sensitiveCommentSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool
 	// secretAnchor on every login page (false positive).
 	if ctx.Response != nil {
 		for _, c := range htmlComment.FindAllSubmatch(ctx.Response.Body, -1) {
-			if secretAnchor.Match(c[1]) {
-				return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, "sensitive token in HTML comment")}, false, nil
+			if data := matchContext(c[1], secretAnchor, 32); data != "" {
+				return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, withData("sensitive token in HTML comment", data))}, false, nil
 			}
 		}
 	}
 	for _, js := range ctx.DiscoveredJS {
-		if js != nil && secretAnchor.Match(js.Body) {
-			return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, "sensitive token in client-delivered JS source")}, false, nil
+		if js == nil {
+			continue
+		}
+		if data := matchContext(js.Body, secretAnchor, 32); data != "" {
+			return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, withData("sensitive token in client-delivered JS source", data))}, false, nil
 		}
 	}
 	return nil, false, nil
@@ -114,7 +161,7 @@ func (gitExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 	// config → "[core]"; HEAD → "ref: refs/". Either confirms real git metadata.
 	b := string(ctx.Response.Body)
 	if strings.HasPrefix(b, "ref: refs/") || strings.Contains(b, "[core]") {
-		return []domain.Finding{finding(cweGit, ctx.Target.URL, domain.SevHigh, ".git metadata exposed")}, false, nil
+		return []domain.Finding{finding(cweGit, ctx.Target.URL, domain.SevHigh, withData(".git metadata exposed", snippet(ctx.Response.Body)))}, false, nil
 	}
 	return nil, false, nil
 }
@@ -164,7 +211,9 @@ func (envExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 		if envPlaceholderPrefix.Match(val) {
 			continue // unfilled template token, not a real secret
 		}
-		return []domain.Finding{finding(cweEnv, ctx.Target.URL, domain.SevCritical, ".env with secret keys exposed")}, false, nil
+		// m[0] is the matched `KEY=value` — the real exposed credential the operator
+		// needs to see to judge and to rotate.
+		return []domain.Finding{finding(cweEnv, ctx.Target.URL, domain.SevCritical, withData(".env with secret keys exposed", snippet(m[0])))}, false, nil
 	}
 	return nil, false, nil
 }
@@ -192,8 +241,8 @@ func (crossdomainSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 	if ctx.Response == nil {
 		return nil, false, nil
 	}
-	if crossdomainWild.Match(ctx.Response.Body) {
-		return []domain.Finding{finding(cweCrossdomain, ctx.Target.URL, domain.SevMedium, `crossdomain.xml allows domain="*"`)}, false, nil
+	if data := matchContext(ctx.Response.Body, crossdomainWild, 8); data != "" {
+		return []domain.Finding{finding(cweCrossdomain, ctx.Target.URL, domain.SevMedium, withData(`crossdomain.xml allows domain="*"`, data))}, false, nil
 	}
 	return nil, false, nil
 }
@@ -301,8 +350,8 @@ func (robotsSensitiveSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool,
 	if ctx.Response == nil {
 		return nil, false, nil
 	}
-	if robotsSensitive.Match(ctx.Response.Body) {
-		return []domain.Finding{finding(cweRobots, ctx.Target.URL, domain.SevLow, "robots.txt discloses sensitive path")}, false, nil
+	if data := matchContext(ctx.Response.Body, robotsSensitive, 0); data != "" {
+		return []domain.Finding{finding(cweRobots, ctx.Target.URL, domain.SevLow, withData("robots.txt discloses sensitive path", data))}, false, nil
 	}
 	return nil, false, nil
 }
