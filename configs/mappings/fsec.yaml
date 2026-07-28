@@ -1,0 +1,55 @@
+# FSEC mapping — CWE → framework-item projection for the 전자금융/기반시설 웹 평가
+# 기준 (과기정통부 고시 제2025-0832호). Same schema as configs/mappings/kisa.yaml
+# (weakness axis). Standalone so it does not touch the running KISA mapping; when
+# both frameworks are wired the rows can be merged CWE-by-CWE (a CWE simply gains
+# an FSEC column beside its KISA one, e.g. CWE-319 already maps to KISA:[PS-001]).
+#
+# N:M is intentional and supported: one item is covered by several CWEs (040, 051)
+# and the accounting is on the item axis. An item is "covered" iff at least one of
+# its CWEs is owned by a wired checker; otherwise it must be delegated (see
+# configs/coverage/fsec.yaml). Passive ownership today:
+#   owned by chiller  → CWE-319/1327/311 (transport), CWE-538/530/548 (file exposure)
+#   NOT owned (active) → CWE-79/918/613/639/1336  → delegated
+version: "fsec-2025-0832"
+
+map:
+  # --- WEB-SER-040 불필요한 파일 노출 (passive: exposed-file family chiller owns) ---
+  CWE-540:  { FSEC: [WEB-SER-040] }   # 소스/테스트 파일 내 민감정보 노출 (canonical)
+  CWE-538:  { FSEC: [WEB-SER-040] }   # 외부접근 파일/디렉터리 노출 (.env) — observation
+  CWE-530:  { FSEC: [WEB-SER-040] }   # 백업 파일 노출 — observation
+  CWE-548:  { FSEC: [WEB-SER-040] }   # 디렉터리 목록 노출 — dirhunt
+  # --- WEB-SER-041 XSS ---
+  CWE-79:   { FSEC: [WEB-SER-041] }   # 크로스 사이트 스크립팅 (동적 → Nuclei)
+  # --- WEB-SER-046 SSRF ---
+  CWE-918:  { FSEC: [WEB-SER-046] }   # 서버 사이드 요청 위조 (동적 → Nuclei)
+  # --- WEB-SER-048 세션정보 재사용 (불충분한 세션 관리) ---
+  CWE-613:  { FSEC: [WEB-SER-048] }   # 불충분한 세션 만료/관리 (대안: CWE-384 세션 고정)
+  # --- WEB-SER-049 인증수단 소유자 검증 ---
+  CWE-639:  { FSEC: [WEB-SER-049] }   # 사용자 제어 키를 통한 인가 우회 (대안: CWE-287)
+  # --- WEB-SER-051 통신구간 암호화 (데이터 평문 전송) ---
+  CWE-319:  { FSEC: [WEB-SER-051] }   # 민감정보 평문 전송 — humble (owned)
+  CWE-1327: { FSEC: [WEB-SER-051] }   # 취약한 TLS — testssl (owned)
+  CWE-311:  { FSEC: [WEB-SER-051] }   # 미암호화 전송(평문 로그인) — observation (owned)
+  # --- WEB-SER-052 SSTI ---
+  CWE-1336: { FSEC: [WEB-SER-052] }   # 서버 사이드 템플릿 인젝션 (동적 → Nuclei)
+
+  # --- P5 totality: every CHECKER-owned CWE must be KNOWN to the active mapping,
+  # even when it projects to NO item in this framework. These passive checks
+  # (robots/cookies/clickjacking/version/CORS/etc.) still run, but own nothing in
+  # FSEC, so they map to an empty item list. Without these rows coverage.New would
+  # reject startup ("owns unmapped CWE") — the FSEC scan could not boot. ---
+  CWE-1021: { FSEC: [] }   # clickjacking (humble)
+  CWE-693:  { FSEC: [] }   # version disclosure (httpx)
+  CWE-614:  { FSEC: [] }   # cookie Secure (observation)
+  CWE-1004: { FSEC: [] }   # cookie HttpOnly (observation)
+  CWE-1275: { FSEC: [] }   # cookie SameSite (observation)
+  CWE-651:  { FSEC: [] }   # robots.txt (observation)
+  CWE-615:  { FSEC: [] }   # sensitive comment (observation)
+  CWE-527:  { FSEC: [] }   # .git exposure (observation)
+  CWE-306:  { FSEC: [] }   # admin no-auth (observation)
+  CWE-598:  { FSEC: [] }   # session id in URL (observation)
+  CWE-942:  { FSEC: [] }   # crossdomain.xml (observation)
+  CWE-799:  { FSEC: [] }   # captcha absence (observation)
+  CWE-798:  { FSEC: [] }   # default credentials (changeme)
+  CWE-346:  { FSEC: [] }   # permissive CORS (corsy)
+  no-canonical-cwe: { FSEC: [] }  # attacker-axis sentinel (subzy) — never silence (R8)

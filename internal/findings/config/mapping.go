@@ -83,6 +83,27 @@ func LoadMappingFile(path string) (*MappingTable, error) {
 // Revision returns the mapping version stamped into reports.
 func (t *MappingTable) Revision() string { return t.version }
 
+// ItemCWEs inverts the weakness map to PS-ID → owning CWEs for a framework, so
+// the report view can show each item's canonical CWE badge without duplicating
+// the CWE↔PS-ID table into another config file. Order-stable per item. Items with
+// only an attacker-axis owner (no canonical CWE, e.g. subzy/PS-025) get the
+// NoCanonicalCWE sentinel so the badge can render "no canonical CWE" honestly.
+func (t *MappingTable) ItemCWEs(fw domain.Framework) map[domain.PSID][]domain.CWE {
+	out := map[domain.PSID][]domain.CWE{}
+	for cwe, byFw := range t.weakness {
+		for _, item := range byFw[fw] {
+			out[domain.PSID(item)] = append(out[domain.PSID(item)], cwe)
+		}
+	}
+	// Attacker-axis owners (no canonical CWE) still deserve a badge.
+	for psid := range t.attack {
+		if _, ok := out[psid]; !ok {
+			out[psid] = []domain.CWE{domain.NoCanonicalCWE}
+		}
+	}
+	return out
+}
+
 // Project returns the framework items for a set of CWEs (deduped, order-stable).
 // Absent CWE/framework ⇒ empty (R10). Totality (that every *owned* CWE has an
 // entry) is asserted separately by the boot check, not here.

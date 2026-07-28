@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -126,7 +127,7 @@ func run(f flags) error {
 	// An unwired probe owns its items but executes nothing, so they are reported
 	// tool-failed (no verdict). Say so at boot: an operator must never read a
 	// report as "clean" for items no tool examined.
-	log.Printf("boot gate OK: all %d KISA items have an owner", len(spec.Items))
+	log.Printf("boot gate OK: all %d %s items have an owner (or delegation)", len(spec.Items), spec.FrameworkOrDefault())
 	var unwired []string
 	for _, p := range probeAdapters {
 		if !p.Wired() {
@@ -134,9 +135,35 @@ func run(f flags) error {
 		}
 	}
 	if len(unwired) > 0 {
-		log.Printf("WARNING: %d of %d probes are NOT wired (%s). The KISA items they own "+
+		log.Printf("WARNING: %d of %d probes are NOT wired (%s). The items they own "+
 			"cannot be judged and will be reported tool-failed, NOT clean. See infra-plan §3.",
 			len(unwired), len(probeAdapters), strings.Join(unwired, ", "))
+	}
+
+	// Per-request framework selection: the primary (--coverage/--mapping) is the
+	// default; sibling frameworks in the same config directory are auto-loaded so a
+	// scan can request them (POST /scans {"framework":"FSEC"}). Each has its own
+	// mapping+spec → its own accountant/mapper (they cannot share; see FSEC's
+	// attacker-axis). A secondary framework that fails its boot gate is skipped with
+	// a warning — it must never take down the default framework.
+	defaultFW := spec.FrameworkOrDefault()
+	runtimes := map[domain.Framework]orchestrator.FrameworkRuntime{
+		defaultFW: {Accountant: acc, Mapper: mapper, ReportBuilder: report.New(mapper)},
+	}
+	for _, ff := range extraFrameworkConfigs(f, defaultFW) {
+		em, e1 := fconfig.LoadMappingFile(ff.mapping)
+		es, e2 := fconfig.LoadCoverageSpecFile(ff.coverage)
+		if e1 != nil || e2 != nil {
+			log.Printf("WARNING: framework %s skipped (load: %v / %v)", ff.framework, e1, e2)
+			continue
+		}
+		ea, emp, e3 := orchestrator.BootGate(checkers, em, es)
+		if e3 != nil {
+			log.Printf("WARNING: framework %s skipped (boot gate: %v)", ff.framework, e3)
+			continue
+		}
+		runtimes[ff.framework] = orchestrator.FrameworkRuntime{Accountant: ea, Mapper: emp, ReportBuilder: report.New(emp)}
+		log.Printf("framework %s loaded: %d items selectable via POST /scans {\"framework\":\"%s\"}", ff.framework, len(es.Items), ff.framework)
 	}
 
 	// --- select store/queue backends (PR-11b: composition root is the ONLY place
@@ -152,25 +179,27 @@ func run(f flags) error {
 	// --- assemble seams + findings pipeline.
 	metrics := &platform.Metrics{}
 	cfg := orchestrator.Config{
-		Store:         be.store,
-		Queue:         be.queue,
-		Progress:      progress.New(),
-		Ingestor:      ingest.New(),
-		Checkers:      checkers,
-		Accountant:    acc,
-		Mapper:        mapper,
-		Deduper:       dedup.New(),
-		ReportBuilder: report.New(mapper),
-		FindingsStore: be.findings,
-		Cache:         be.cache,
-		Metrics:       metrics,
-		CacheStats:    be.stats,
-		Frameworks:    []domain.Framework{domain.FrameworkKISA},
-		HTTPClient:    &http.Client{},
-		Workers:       f.workers,
-		Clock:         func() domain.Timestamp { return domain.Timestamp(time.Now().UnixMilli()) },
-		NewID:         newScanID,
-		Financial:     f.financial,
+		Store:             be.store,
+		Queue:             be.queue,
+		Progress:          progress.New(),
+		Ingestor:          ingest.New(),
+		Checkers:          checkers,
+		Accountant:        acc,
+		Mapper:            mapper,
+		Deduper:           dedup.New(),
+		ReportBuilder:     report.New(mapper),
+		FindingsStore:     be.findings,
+		Cache:             be.cache,
+		Metrics:           metrics,
+		CacheStats:        be.stats,
+		Frameworks:        []domain.Framework{defaultFW},
+		FrameworkRuntimes: runtimes,
+		DefaultFramework:  defaultFW,
+		HTTPClient:        &http.Client{},
+		Workers:           f.workers,
+		Clock:             func() domain.Timestamp { return domain.Timestamp(time.Now().UnixMilli()) },
+		NewID:             newScanID,
+		Financial:         f.financial,
 	}
 	if f.financial {
 		cfg.ProxyURL = "http://" + f.proxyAddr
@@ -250,11 +279,21 @@ func serveAPI(ctx context.Context, f flags, orch *orchestrator.Orchestrator, be 
 	if token == "" {
 		return fmt.Errorf("role %q needs a token via --token or CHILLER_TOKEN (fail-closed: an empty token denies all)", f.role)
 	}
+	// Presentation metadata for the customer compliance report (/report), merged
+	// across ALL loaded frameworks (their PS-ID namespaces are disjoint, e.g.
+	// PS-011 vs WEB-SER-040, so a single union map serves every scan's framework).
+	// Best-effort: a missing catalog/mapping degrades to bare PS-IDs, never fails
+	// the API. The per-scan framework is read from each report, not fixed here.
+	catalog, itemCWEs, fw := reportMeta(f)
+
 	h := api.New(api.NewBearerAuthorizer(token), orch,
 		api.WithHealthChecks(health...),
 		api.WithIntrospection(be.queue),
 		api.WithScanStore(be.store),
 		api.WithPersistenceStats(persistenceStats{metrics: metrics, stats: be.stats, retry: be.retry}),
+		api.WithCatalog(catalog),
+		api.WithItemCWEs(itemCWEs),
+		api.WithFramework(fw),
 	)
 	// ReadHeaderTimeout bounds header-read time so a client that dribbles headers
 	// cannot hold a connection open indefinitely (Slowloris). 10s is generous
@@ -541,4 +580,84 @@ func newScanID() domain.ScanID {
 		return domain.ScanID(fmt.Sprintf("scan-%d", time.Now().UnixNano()))
 	}
 	return domain.ScanID("scan-" + hex.EncodeToString(b[:]))
+}
+
+// frameworkFiles pairs a framework with its coverage + mapping file locations.
+type frameworkFiles struct {
+	framework domain.Framework
+	coverage  string
+	mapping   string
+}
+
+// extraFrameworkConfigs discovers sibling framework configs next to the primary
+// --coverage/--mapping files: any *.yaml in the coverage directory (other than the
+// primary) that parses as a coverage spec and has a same-named mapping file. The
+// given default framework is excluded (already loaded). Best-effort: a file that
+// is not a coverage spec, or lacks a mapping, is skipped.
+func extraFrameworkConfigs(f flags, defaultFW domain.Framework) []frameworkFiles {
+	covDir := filepath.Dir(f.coveragePath)
+	mapDir := filepath.Dir(f.mappingPath)
+	entries, err := os.ReadDir(covDir)
+	if err != nil {
+		return nil
+	}
+	seen := map[domain.Framework]bool{defaultFW: true}
+	var out []frameworkFiles
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".yaml" {
+			continue
+		}
+		covPath := filepath.Join(covDir, e.Name())
+		if covPath == f.coveragePath {
+			continue
+		}
+		sp, err := fconfig.LoadCoverageSpecFile(covPath)
+		if err != nil {
+			continue // not a coverage spec file
+		}
+		fw := sp.FrameworkOrDefault()
+		if seen[fw] {
+			continue
+		}
+		mapPath := filepath.Join(mapDir, e.Name())
+		if _, err := os.Stat(mapPath); err != nil {
+			log.Printf("WARNING: framework %s coverage %s has no matching mapping at %s — skipped", fw, covPath, mapPath)
+			continue
+		}
+		seen[fw] = true
+		out = append(out, frameworkFiles{framework: fw, coverage: covPath, mapping: mapPath})
+	}
+	return out
+}
+
+// reportMeta builds the merged catalog + item→CWE maps for the compliance report
+// view across every loaded framework, plus the default framework. The PS-ID
+// namespaces are disjoint across frameworks, so a single union map is unambiguous.
+func reportMeta(f flags) (map[domain.PSID]fconfig.ItemMeta, map[domain.PSID][]domain.CWE, domain.Framework) {
+	catalog := map[domain.PSID]fconfig.ItemMeta{}
+	itemCWEs := map[domain.PSID][]domain.CWE{}
+	defaultFW := domain.FrameworkKISA
+
+	all := []frameworkFiles{}
+	if sp, err := fconfig.LoadCoverageSpecFile(f.coveragePath); err == nil {
+		defaultFW = sp.FrameworkOrDefault()
+		all = append(all, frameworkFiles{framework: defaultFW, coverage: f.coveragePath, mapping: f.mappingPath})
+	} else {
+		log.Printf("WARNING: catalog load (%s): %v — compliance report shows bare PS-IDs", f.coveragePath, err)
+	}
+	all = append(all, extraFrameworkConfigs(f, defaultFW)...)
+
+	for _, ff := range all {
+		if cat, err := fconfig.LoadCatalogFile(ff.coverage); err == nil {
+			for k, v := range cat {
+				catalog[k] = v
+			}
+		}
+		if mt, err := fconfig.LoadMappingFile(ff.mapping); err == nil {
+			for k, v := range mt.ItemCWEs(ff.framework) {
+				itemCWEs[k] = v
+			}
+		}
+	}
+	return catalog, itemCWEs, defaultFW
 }

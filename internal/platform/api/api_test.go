@@ -24,9 +24,13 @@ type fakeOrch struct {
 	rep       report.Report
 	repReady  bool
 	repErr    error
+	createdFW domain.Framework
 }
 
-func (f *fakeOrch) CreateScan(_ context.Context, _ platform.ScanRequest) (domain.ScanID, error) {
+func (f *fakeOrch) CreateScan(_ context.Context, _ platform.ScanRequest, fw ...domain.Framework) (domain.ScanID, error) {
+	if len(fw) > 0 {
+		f.createdFW = fw[0]
+	}
 	return f.created, f.createErr
 }
 func (f *fakeOrch) StartScan(_ context.Context, _ domain.ScanID) error  { f.started = true; return nil }
