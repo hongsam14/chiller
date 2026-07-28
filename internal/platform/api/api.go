@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hongsam14/chiller/internal/domain"
+	"github.com/hongsam14/chiller/internal/findings/config"
 	"github.com/hongsam14/chiller/internal/platform"
 	"github.com/hongsam14/chiller/internal/scan/ingest"
 )
@@ -58,6 +59,19 @@ type Handler struct {
 	store     platform.TaskStore // for the scan list (nil → endpoint reports unavailable)
 	health    []HealthCheck
 	persist   PersistenceStats // for /api/introspect/persistence
+	// compliance report view (customer-facing) — presentation metadata joined into
+	// the enriched report. Empty maps degrade gracefully (bare PS-IDs, no CWE badges).
+	catalog   map[domain.PSID]config.ItemMeta
+	itemCWEs  map[domain.PSID][]domain.CWE
+	framework domain.Framework // which framework's labels the report view reads; "" ⇒ KISA
+}
+
+// reportFramework is the framework the report view projects onto (default KISA).
+func (h *Handler) reportFramework() domain.Framework {
+	if h.framework == "" {
+		return domain.FrameworkKISA
+	}
+	return h.framework
 }
 
 // PersistenceStats is what the persistence introspection endpoint reports. It is
@@ -130,12 +144,31 @@ func WithScanStore(store platform.TaskStore) Option {
 	return func(h *Handler) { h.store = store }
 }
 
+// WithCatalog supplies the item title/description/category metadata for the
+// customer compliance report (GET /api/report/{id} + /report). Presentation only.
+func WithCatalog(catalog map[domain.PSID]config.ItemMeta) Option {
+	return func(h *Handler) { h.catalog = catalog }
+}
+
+// WithItemCWEs supplies each item's canonical CWE(s) for the report's standard
+// badges, derived from the mapping table (no config duplication).
+func WithItemCWEs(cwes map[domain.PSID][]domain.CWE) Option {
+	return func(h *Handler) { h.itemCWEs = cwes }
+}
+
+// WithFramework selects which accounting framework the compliance report view
+// projects onto (must match the accountant's framework). Default KISA.
+func WithFramework(fw domain.Framework) Option {
+	return func(h *Handler) { h.framework = fw }
+}
+
 // scanRequestDTO is the wire shape for POST /scans (JSON-tagged, so the scan
 // unit's ingest structs stay free of transport concerns).
 type scanRequestDTO struct {
-	URLs     []string `json:"urls"`
-	Approved []string `json:"approved"`
-	Options  struct {
+	URLs      []string `json:"urls"`
+	Approved  []string `json:"approved"`
+	Framework string   `json:"framework"` // accounting framework (e.g. "KISA"|"FSEC"); "" ⇒ server default
+	Options   struct {
 		RatePerHost int      `json:"ratePerHost"`
 		Burst       int      `json:"burst"`
 		MaxURLs     int      `json:"maxURLs"`
@@ -174,6 +207,10 @@ func New(authz platform.Authorizer, orch platform.Orchestrator, opts ...Option) 
 	h.mux.HandleFunc("GET /api/introspect/scans", h.guard(h.introspectScans))
 	h.mux.HandleFunc("GET /api/introspect/persistence", h.guard(h.introspectPersistence))
 	h.mux.HandleFunc("GET /ui", h.serveUI)
+	// Customer-facing compliance report: an authz'd enriched JSON view + a static
+	// HTML shell (same no-data/strict-headers pattern as /ui).
+	h.mux.HandleFunc("GET /api/report/{id}", h.guard(h.getComplianceReport))
+	h.mux.HandleFunc("GET /report", h.serveReportUI)
 	return h
 }
 
@@ -226,7 +263,7 @@ func (h *Handler) postScan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed json"})
 		return
 	}
-	id, err := h.orch.CreateScan(r.Context(), dto.toRequest())
+	id, err := h.orch.CreateScan(r.Context(), dto.toRequest(), domain.Framework(dto.Framework))
 	if err != nil {
 		if errors.Is(err, platform.ErrBadRequest) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})

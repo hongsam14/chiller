@@ -1,0 +1,48 @@
+# FSEC — 전자금융 / 주요정보통신기반시설 웹 서비스 취약점 분석·평가 기준
+# (과학기술정보통신부 고시 제2025-0832호, 5.8 공개서버 보안 발췌).
+#
+# A SECOND accounting framework, separate from the passive KISA 26-item set
+# (configs/coverage/kisa.yaml). Same schema (items + delegations + catalog); the
+# accounting kernel treats it identically. NOT wired into the running process yet
+# — doing so needs a domain Framework/DelegateTarget addition + a --coverage/
+# --mapping flag pointing here + the accountant projecting this framework. Until
+# then this is reviewed reference data.
+#
+# HONESTY: chiller is a PASSIVE/observation engine. Of these 7 items only two are
+# passively judgeable (040 file exposure, 051 transport encryption — chiller owns
+# their CWEs). The other five are active/dynamic (injection, authenticated replay,
+# multi-account) and are DELEGATED — never claimed as covered here. The boot gate
+# would otherwise refuse to start (no owner) rather than report a false clean.
+framework: FSEC
+
+items:
+  - WEB-SER-040
+  - WEB-SER-041
+  - WEB-SER-046
+  - WEB-SER-048
+  - WEB-SER-049
+  - WEB-SER-051
+  - WEB-SER-052
+
+# item → the stage that covers it (delegated, not judged by this passive engine).
+# Nuclei      = 템플릿 기반 동적 탐지(반사형 XSS·SSRF·SSTI 페이로드).
+# ActiveScan  = 능동/AI 동적 스캐너(인증 세션 재생·다계정 인가 검증 — 템플릿으로 불가).
+delegations:
+  WEB-SER-052: Nuclei      # SSTI
+  WEB-SER-041: ActiveScan  # XSS
+  WEB-SER-046: ActiveScan  # SSRF
+  WEB-SER-048: ActiveScan  # 세션정보 재사용 (로그인 후 세션 재생 필요)
+  WEB-SER-049: ActiveScan  # 인증수단 소유자 검증 (타 계정 인증수단 필요)
+
+# catalog: human-facing metadata for the compliance report UI (presentation only;
+# the kernel ignores this section). `risk` = 고시상 위험도(1~5). `activeHint: true`
+# marks items a passive engine cannot fully judge → report suggests the active/AI
+# stage instead of implying a clean pass.
+catalog:
+  WEB-SER-040: { title: "불필요한 파일 노출",       category: "5.8.4 서비스 보호", risk: 4, description: "테스트·샘플·개발용 파일이나 기능이 서비스에 노출되는지 점검" }
+  WEB-SER-041: { title: "크로스 사이트 스크립팅(XSS)", category: "5.8.4 서비스 보호", risk: 4, description: "업로드·저장된 스크립트가 타 이용자 브라우저/웹뷰에서 실행되는지 점검", activeHint: true }
+  WEB-SER-046: { title: "서버 사이드 요청 위조(SSRF)", category: "5.8.4 서비스 보호", risk: 4, description: "요청 파라미터(IP/URL) 변조로 내부망 등 비인가 대역 응답이 반환되는지 점검", activeHint: true }
+  WEB-SER-048: { title: "세션정보 재사용 제한",       category: "5.8.4 서비스 보호", risk: 3, description: "획득한 세션ID/토큰을 다른 IP·단말에서 재사용할 수 있는지 점검(불충분한 세션 관리)", activeHint: true }
+  WEB-SER-049: { title: "인증수단 소유자 검증",       category: "5.8.4 서비스 보호", risk: 5, description: "타 이용자 소유의 인증수단(인증서 등)으로 인증·우회가 가능한지 점검", activeHint: true }
+  WEB-SER-051: { title: "통신구간 암호화 적용",       category: "5.8.7 데이터 보호", risk: 5, description: "개인정보·거래·인증정보 송수신 구간에 안전한 암호 프로토콜 적용 여부 점검(데이터 평문 전송)" }
+  WEB-SER-052: { title: "서버 사이드 템플릿 인젝션(SSTI)", category: "5.8.4 서비스 보호", risk: 5, description: "템플릿 엔진에 주입된 표현식이 서버에서 평가·실행되는지 점검", activeHint: true }

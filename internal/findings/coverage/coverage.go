@@ -49,7 +49,7 @@ func New(ownership CWEOwnership, mt *config.MappingTable, spec domain.CoverageSp
 				return nil, fmt.Errorf("coverage: checker %q owns unmapped CWE %q (P5 totality)", checker, c)
 			}
 		}
-		for _, item := range mt.Project(cwes, domain.FrameworkKISA) {
+		for _, item := range mt.Project(cwes, spec.FrameworkOrDefault()) {
 			add(domain.PSID(item), checker)
 		}
 	}
@@ -129,3 +129,7 @@ func (a *Accountant) statusFor(id domain.PSID, o ScanOutcome) domain.ItemStatus 
 
 // Spec returns the coverage spec (for Validate at the report stage).
 func (a *Accountant) Spec() domain.CoverageSpec { return a.spec }
+
+// Framework is the projection this accountant accounts on — the same one the fold
+// and report must use so the N/A projection and labels line up with the coverage.
+func (a *Accountant) Framework() domain.Framework { return a.spec.FrameworkOrDefault() }

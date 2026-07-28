@@ -2,11 +2,13 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/hongsam14/chiller/internal/domain"
 	"github.com/hongsam14/chiller/internal/findings/compliance"
 	fconfig "github.com/hongsam14/chiller/internal/findings/config"
+	"github.com/hongsam14/chiller/internal/findings/coverage"
 	"github.com/hongsam14/chiller/internal/platform"
 	"github.com/hongsam14/chiller/internal/platform/taskstore"
 	"github.com/hongsam14/chiller/internal/scan/checking/observation"
@@ -214,7 +216,7 @@ func TestFoldOutcomes_PR5Rules(t *testing.T) {
 		NotApplicable: map[domain.CheckerID][]domain.CWE{"fake:na": {"CWE-527"}},
 	}}
 
-	so := o.foldOutcomes("s", ctx, outcomes)
+	so := o.foldOutcomes("s", ctx, outcomes, FrameworkRuntime{Mapper: compliance.New(mt)})
 
 	if !so.RanOK["fake:ok"] {
 		t.Errorf("applicable-ok checker should be RanOK")
@@ -250,6 +252,104 @@ func TestBootGate_RealConfig_Passes(t *testing.T) {
 	}
 	if acc == nil || mapper == nil {
 		t.Fatal("boot gate returned nil accountant/mapper")
+	}
+}
+
+// TestBootGate_FSEC_Passes wires the SECOND framework (FSEC) end-to-end through
+// the real boot gate: the full passive checker set + the fsec mapping/coverage.
+// It must boot (P5 totality holds via the empty-projection rows) and produce the
+// honest partition — 040/051 owned+accounted, the five active items delegated.
+func TestBootGate_FSEC_Passes(t *testing.T) {
+	const (
+		fsecMap = "../../../configs/mappings/fsec.yaml"
+		fsecCov = "../../../configs/coverage/fsec.yaml"
+	)
+	mt, err := fconfig.LoadMappingFile(fsecMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := fconfig.LoadCoverageSpecFile(fsecCov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.FrameworkOrDefault() != domain.FrameworkFSEC {
+		t.Fatalf("fsec coverage framework = %q, want FSEC", spec.FrameworkOrDefault())
+	}
+	var checkers []domain.Checker
+	checkers = append(checkers, observation.Checkers(observation.Default())...)
+	for _, p := range probe.Default() {
+		checkers = append(checkers, p)
+	}
+	acc, _, err := BootGate(checkers, mt, spec)
+	if err != nil {
+		t.Fatalf("FSEC boot gate should pass with real config + full checkers: %v", err)
+	}
+	if acc.Framework() != domain.FrameworkFSEC {
+		t.Errorf("accountant framework = %q, want FSEC", acc.Framework())
+	}
+	// With every owner ranking OK, the two passive items are Checked and the five
+	// active items are Delegated — a valid 7-item partition.
+	so := coverage.ScanOutcome{RanOK: map[domain.CheckerID]bool{}}
+	for _, c := range checkers {
+		so.RanOK[c.ID()] = true
+	}
+	cov := acc.Account(so)
+	if err := cov.Validate(spec); err != nil {
+		t.Fatalf("FSEC coverage is not a valid partition: %v", err)
+	}
+	var checked, delegated int
+	for _, rec := range cov {
+		switch rec.Status {
+		case domain.StatusChecked:
+			checked++
+		case domain.StatusDelegated:
+			delegated++
+		}
+	}
+	if checked != 2 || delegated != 5 {
+		t.Errorf("FSEC partition = checked %d / delegated %d, want 2 / 5 (040,051 owned; 5 active delegated)", checked, delegated)
+	}
+}
+
+// TestCreateScan_FrameworkSelection: a scan records the requested framework
+// (default when omitted), and an unknown framework is rejected as a bad request.
+func TestCreateScan_FrameworkSelection(t *testing.T) {
+	store := taskstore.New()
+	n := 0
+	o := New(Config{
+		Store:            store,
+		Ingestor:         ingest.New(),
+		NewID:            func() domain.ScanID { n++; return domain.ScanID("s" + string(rune('0'+n))) },
+		Clock:            func() domain.Timestamp { return 0 },
+		DefaultFramework: domain.FrameworkKISA,
+		FrameworkRuntimes: map[domain.Framework]FrameworkRuntime{
+			domain.FrameworkFSEC: {}, // registered → selectable
+		},
+	})
+	ctx := context.Background()
+	req := ingest.ScanRequest{URLs: []string{"https://a.test/"}, Approved: []string{"a.test"}}
+
+	// Omitted framework → default.
+	id, err := o.CreateScan(ctx, req)
+	if err != nil {
+		t.Fatalf("default create: %v", err)
+	}
+	if s, _ := store.LoadScan(ctx, id); len(s.Frameworks) != 1 || s.Frameworks[0] != domain.FrameworkKISA {
+		t.Errorf("default framework not recorded: %v", s.Frameworks)
+	}
+
+	// Explicit registered framework.
+	id2, err := o.CreateScan(ctx, req, domain.FrameworkFSEC)
+	if err != nil {
+		t.Fatalf("FSEC create: %v", err)
+	}
+	if s, _ := store.LoadScan(ctx, id2); len(s.Frameworks) != 1 || s.Frameworks[0] != domain.FrameworkFSEC {
+		t.Errorf("FSEC framework not recorded: %v", s.Frameworks)
+	}
+
+	// Unknown framework → bad request.
+	if _, err := o.CreateScan(ctx, req, domain.Framework("NOPE")); !errors.Is(err, platform.ErrBadRequest) {
+		t.Errorf("unknown framework must be ErrBadRequest, got %v", err)
 	}
 }
 

@@ -34,12 +34,14 @@ func (o *Orchestrator) finalize(ctx context.Context, id domain.ScanID) {
 		return
 	}
 
-	// Coverage axis: fold per-item outcomes into a per-checker ScanOutcome, then
-	// account against the fixed spec (result satisfies Coverage.Validate).
-	so := o.foldOutcomes(id, ctx, outcomes)
-	cov := o.cfg.Accountant.Account(so)
+	// Coverage axis: pick the runtime for THIS scan's framework, then fold + account
+	// + report with it (result satisfies Coverage.Validate for that framework).
+	fw := o.scanFramework(ctx, id)
+	rt := o.runtimeFor(fw)
+	so := o.foldOutcomes(id, ctx, outcomes, rt)
+	cov := rt.Accountant.Account(so)
 
-	rep := o.cfg.ReportBuilder.Build(id, findings, cov, o.cfg.Frameworks)
+	rep := rt.ReportBuilder.Build(id, findings, cov, []domain.Framework{fw})
 	if err := o.cfg.Store.SaveReport(ctx, id, rep); err != nil {
 		o.fail(ctx, id)
 		return
@@ -97,13 +99,20 @@ func (o *Orchestrator) wipeCache(ctx context.Context, id domain.ScanID) {
 // absence of RanOK). It uses the orchestrator's own scope split to know which
 // checkers ran on each item, since a WorkItemOutcome does not enumerate its
 // ok checkers.
-func (o *Orchestrator) foldOutcomes(id domain.ScanID, ctx context.Context, outcomes []domain.WorkItemOutcome) coverage.ScanOutcome {
+func (o *Orchestrator) foldOutcomes(id domain.ScanID, ctx context.Context, outcomes []domain.WorkItemOutcome, rt FrameworkRuntime) coverage.ScanOutcome {
 	// Map each item id → the item, so we know which checkers actually ran on it.
 	// Scope alone is not enough: a well-known item is URL-scoped but runs the
 	// observation signatures ONLY (see exec), so crediting the probes as "ran ok"
 	// on it would falsely mark their PS-items Checked — the exact honesty failure
 	// this fold exists to prevent.
 	itemByID := o.itemsByID(ctx, id)
+
+	// The N/A projection must use the accounting framework so its PS-IDs line up
+	// with the coverage. Default KISA when no accountant is wired (fold-only tests).
+	fw := domain.FrameworkKISA
+	if rt.Accountant != nil {
+		fw = rt.Accountant.Framework()
+	}
 
 	appliedOK := map[domain.CheckerID]bool{}
 	failedOnly := map[domain.CheckerID]bool{}
@@ -153,7 +162,7 @@ func (o *Orchestrator) foldOutcomes(id domain.ScanID, ctx context.Context, outco
 			continue
 		}
 		for w := range cwes {
-			for _, item := range o.cfg.Mapper.Project([]domain.CWE{w}, domain.FrameworkKISA) {
+			for _, item := range rt.Mapper.Project([]domain.CWE{w}, fw) {
 				if so.NotApplicable[cid] == nil {
 					so.NotApplicable[cid] = map[domain.PSID]bool{}
 				}

@@ -1324,3 +1324,39 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: OPERATIONS - production-readiness updated (Observation well-known, r10).
 
 ---
+## UI: 고객용 컴플라이언스 리포트 뷰 신설 (r11)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "현재 ui에서 scan결과를 열람하는 부분에 대한 개선이 필요. (1) 취약 발견 카운터 (2) 항목 제목/설명 mapping yaml 추가 + 표에 제목 (3) 컴플라이언스 기반 탐지 증적 시각화 + delegated/not_applicable을 실패/스킵이 아니라 다른 엔진 이관/해당없음으로 표현"
+**Decisions (AskUserQuestion)**: 카탈로그=coverage yaml 단일 파일(이원화 회피) · delegated/n/a 구분 표현(정직): delegated=담당 엔진명 이관, n/a=해당없음(+수동한계 항목 능동/AI 권장) · 고객용 컴플라이언스 리포트 뷰 신설(운영 대시보드 유지).
+**AI Response**: 구현 완료. (1) report DTO가 checked를 vulnerable(finding>0)/clean으로 분리, 심각도 히스토그램. (2) configs/coverage/kisa.yaml에 catalog: 26항목(title/description/category/activeHint) 추가 — 커널 LoadCoverageSpec은 무시, 신설 config.LoadCatalog만 읽음(단일 관리면). MappingTable.ItemCWEs로 PS→CWE 배지(중복 없음). (3) 신규 GET /api/report/{id}(authz) + GET /report(정적 셸, CSP) — 26/26 파티션 바 + 탐지 파이프라인 라우팅(chiller 판정 / Nuclei·ASM 이관 / 해당없음 / 점검불가) + 항목표(제목·KISA·CWE 배지·결과 chip·activeHint 힌트). 실 스캔(kbland.kr) 검증: vulnerable 3/clean 11/delegated 4(Nuclei·ASM)/na 7/tool_failed 1, findings 14. 로컬 게이트 green(build/vet/gofmt/arch-check/race 23pkg/gosec 0). 신규 테스트: catalog_test(실 config 전항목 커버+빈 섹션 무해), report_view_test(결과 도출+조인+요약). 정직성: n/a를 일괄 '이관'으로 바꾸지 않고 delegated(설계 이관)와 구분, activeHint만 '능동/AI 권장'.
+**Context**: CONSTRUCTION - customer compliance report UI (r11).
+
+---
+## FSEC 프레임워크 배선 (r12)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "배선까지 진행해줘."
+**AI Response**: FSEC를 실행 시스템에 배선. CoverageSpec에 Framework 필드 추가(coverage yaml의 framework: 필드로 선언, 미설정 시 KISA 기본) — coverage.New 시그니처 불변(테스트 9곳 무영향). accountant가 spec.FrameworkOrDefault()로 소유 CWE 투영; Accountant.Framework() 접근자; finalize N/A 투영도 동일 프레임워크 사용(nil-safe). api WithFramework + report_view가 선택 프레임워크의 FrameworkLabels 사용. cmd가 coverage 파일에서 framework를 읽어 Frameworks/itemCWEs/WithFramework에 전달 — 프레임워크 전환 = --coverage/--mapping 두 플래그만 fsec 파일로. domain에 FrameworkFSEC + DelegateActiveScan 상수. fsec 매핑에 P5 totality 행(소유 CWE 전부 known, 무관 항목은 FSEC:[]) 추가 — 없으면 boot 거부. 리포트 UI ENGINE 맵에 ActiveScan="능동/AI 동적 스캐너". 검증: TestBootGate_FSEC_Passes(실 config+전체 checker, checked 2/delegated 5 유효 파티션), 로컬 end-to-end(chiller --coverage=fsec --mapping=fsec, example.com 스캔 → 7항목, 040 clean, 041/046/052 Nuclei, 048/049 ActiveScan, CWE 배지 정확). KISA 기본 불변(26항목). 로컬 게이트 green(build/vet/gofmt/arch-check/race 23pkg/gosec 0).
+**Context**: CONSTRUCTION - FSEC framework wiring (r12).
+
+---
+## UI: 취약점 세부정보 드릴다운 + --framework all 이슈 (r13)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "구현 방식 확인했으니 --framework all은 이슈로 남기기. report에서 취약점 발견 시 세부정보 확인하고 싶음."
+**AI Response**: (1) GitHub issue #19 생성 — --framework all(다중 프레임워크 회계). 현재 도구는 프레임워크 무관하게 전부 실행되고 findings는 CWE 기준, 프레임워크는 회계 렌즈일 뿐임을 정리; 남은 건 Coverage 다중 파티션. (2) 컴플라이언스 리포트에 취약점 드릴다운: report DTO에 findingDTO(targetUrl/sourceTool/severity/cwes/evidence) + reportItemDTO.Details 추가, complianceReportDTO.Framework 추가(배지·헤더가 KISA 하드코딩 → 동적). UI: 취약 항목 결과칩에 "▶ 상세 N" 토글 → 펼치면 finding별 심각도·도구·CWE·대상URL·증적 스니펫 표시. 실 kbland.kr 스캔 검증(PS-001 humble HSTS, PS-009 12건 등 세부 표시). 게이트 green(build/vet/gofmt/arch-check/race 23pkg/gosec 0). 관찰(별건): PS-009가 well-known 12경로에서 동일 JS 증적으로 12회 발화 — dedup 여지(추후).
+**Context**: CONSTRUCTION - report finding drill-down (r13).
+
+---
+## 요청 단위 프레임워크 선택 (r14)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "1. 요청 단위 프레임워크 선택"
+**AI Response**: POST /scans에 framework 필드 추가(생략 시 서버 기본, 미지값→400). 스캔이 프레임워크 저장→finalize가 프레임워크별 FrameworkRuntime(accountant+mapper+reportBuilder)로 회계/리포트. report.Report에 Frameworks 기록→/api/report가 스캔 프레임워크로 라벨/카탈로그 투영. cmd가 configs/coverage/*.yaml 자동 탐색해 프레임워크별 런타임 등록(보조 프레임워크 boot gate 실패 시 skip, 기본은 유지). 머지 대신 런타임 분리(KISA attacker-axis PS-025 누수 회피); 카탈로그/CWE배지는 disjoint PS-ID라 union. CreateScan variadic(fw ...Framework)로 back-compat(2-arg 호출 무영향). 라이브 검증: 한 서버에서 KISA(26)/FSEC(7) 요청별 선택, NOPE→400. 게이트 green(23pkg, gosec 0). 신규 TestCreateScan_FrameworkSelection.
+**Context**: CONSTRUCTION - per-request framework selection (r14).
+
+---
+## Report 증적 개선: 실제 매칭 데이터 (r15)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "report에 증적 자료가 없음. sensitive token을 모니터링했으면 실제 데이터와 함께 보여줘야 사람/AI가 판단."
+**AI Response**: 관측 시그니처가 증적에 일반 라벨 대신 실제 매칭 데이터를 담도록 개선. 헬퍼 snippet()(single-line·rune-safe·maxEvidenceLen=200 bounded) + matchContext()(매칭 주변 window) + withData()(라벨 — 실데이터). 적용: PS-009(민감토큰: 매칭 토큰+맥락), PS-011(.env: KEY=value 실값), PS-010(.git: config/HEAD 내용), PS-008(robots: Disallow 라인), PS-022(crossdomain: allow-access 라인). fire/no-fire 로직 불변(matchContext!=""≡.Match). 증적은 이미 암호화저장(SECURITY-01)·bounded(FR-12)라 실데이터 부합. 신규 TestEvidence_CarriesRealMatchedData + TestEvidence_Bounded. 라이브(kbland.kr) 검증: 실데이터가 즉시 PS-009를 jQuery 압축코드 오탐(password:!0)으로 판별 가능하게 함 — 기능 목적 달성 + 별건 탐지품질 이슈(PS-009 secret 정규식 minified JS FP) 노출. 게이트 green(23pkg, gosec 0).
+**Context**: CONSTRUCTION - report evidence real-data (r15).
+
+---
