@@ -15,6 +15,9 @@
 #      own unit tests are full of deliberately secret-shaped literals (JWTs, AWS
 #      keys, access_token=... query params) whose entire purpose is to exercise the
 #      detection rules, so the observation *_test.go files are allowlisted wholesale.
+#   4. aidlc-docs/ — internal AI-DLC planning, audit, and build-and-test docs. They
+#      quote illustrative security examples (fake access_token=..., sample tokens) in
+#      prose and are never shipped, so they are allowlisted wholesale too.
 #
 # Scope is by path (plus two exact literals for test files outside the observation
 # package), so real credentials committed anywhere in application code are still caught.
@@ -29,6 +32,7 @@ paths = [
   '''third_party/.*''',
   '''test/fixtures/.*''',
   '''internal/scan/checking/observation/.*_test\.go$''',
+  '''aidlc-docs/.*''',
 ]
 # Exact fake literals embedded in *_test.go so those files stay otherwise scanned.
 regexes = [
