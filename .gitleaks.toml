@@ -1,0 +1,37 @@
+# gitleaks configuration for the `make secrets` gate.
+#
+# It extends gitleaks' full default ruleset (nothing is weakened for real source
+# code) and adds a tightly-scoped allowlist for three classes of NON-secret matches
+# that the scan would otherwise flag. Every entry below is data that is a secret-
+# shaped literal by design, not a live credential:
+#
+#   1. configs/signatures/  — the distilled detection ruleset itself. It holds the
+#      OSS-derived regexes AND their upstream allowlist example keys (e.g. gitleaks'
+#      own gcp-api-key documentation keys). Scanning our detector's rule data with
+#      the same rules self-matches by construction.
+#   2. third_party/         — vendored, pinned upstream sources (gitleaks.toml, ZAP,
+#      nuclei). They carry example/test keys from those projects.
+#   3. test fixtures & the observation signature test corpus — the secret-scanner's
+#      own unit tests are full of deliberately secret-shaped literals (JWTs, AWS
+#      keys, access_token=... query params) whose entire purpose is to exercise the
+#      detection rules, so the observation *_test.go files are allowlisted wholesale.
+#
+# Scope is by path (plus two exact literals for test files outside the observation
+# package), so real credentials committed anywhere in application code are still caught.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Detector rule data, vendored OSS sources, and test fixtures (non-secrets by design)"
+paths = [
+  '''configs/signatures/.*\.ya?ml$''',
+  '''third_party/.*''',
+  '''test/fixtures/.*''',
+  '''internal/scan/checking/observation/.*_test\.go$''',
+]
+# Exact fake literals embedded in *_test.go so those files stay otherwise scanned.
+regexes = [
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJ1c2VyIjoiYWRtaW4ifQ\.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c''',
+  '''sk_live_abc123def456''',
+]
