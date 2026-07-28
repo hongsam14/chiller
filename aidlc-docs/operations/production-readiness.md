@@ -5,6 +5,33 @@
 
 The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Below is what MUST happen before the durable backends run in production, and the honest limitations carried forward.
 
+## Increment log — Observation well-known provider (r10, 2026-07-24)
+
+> **CLOSED (green, approved 2026-07-24).** Wired the host-scoped **well-known-path GET provider**: for each
+> distinct approved host the fan-out synthesizes URL-scoped items for `/robots.txt`, `/.env`, `/.git/config`,
+> `/.git/HEAD`, `/crossdomain.xml`, a pinned backup-name list, and common admin surfaces, and feeds each
+> response to the owning observation signature. This closes the **6-item false-clean/N-A gap** (PS-008 robots ·
+> PS-011 .env · PS-010 .git · PS-022 crossdomain · PS-012 backup · PS-013 admin) that reported "checked, no
+> issue" without ever requesting the artifact. 5 signature dictionaries were deepened (FN-broaden + FP-narrow),
+> corpus-asserted. A **workflow code review (high, 10 findings)** followed and **all 10 were fixed** before
+> approval — see below and `construction/build-and-test/wellknown-build-and-test-summary.md`.
+>
+> **New operator controls (SR-1-style bound on the sweep — it sits outside `MaxURLs` by design, Q6=A):**
+> - `ScanOptions.DisableWellKnown` (bool) — **off-switch**; the sweep is **on by default** (Q3=A: approved
+>   hosts, approval gate + per-host rate honored).
+> - `ScanOptions.MaxWellKnownHosts` (int, **default 50**) — caps distinct hosts swept; hosts beyond the cap
+>   are **skipped and logged** (never silently dropped). Tune down for very large multi-host scans, or when a
+>   target's WAF/IPS thresholds on `.git`/`.env` probing are a concern.
+>
+> **Operational notes:** the sweep shares the per-host rate budget, so expect **+~3s/host** wall-clock
+> (intended). Engine-synthesized well-known items run the **observation signatures only** — the external
+> probe binaries are NOT re-exec'd per synthesized path (an amplification the review caught and removed).
+> The honest-accounting invariant is preserved: skipped probes are never credited as Checked.
+>
+> **Carried forward (honest, not in r10):** PS-009/018/023 dictionary deepening (C1=A, next todo);
+> P0 transport correctness — `br`/`zstd` bodies undecoded + 512KB body cap (C3=A) — can still nullify
+> even a wired check on a proxy/probe path that advertises those encodings.
+
 ## Mandatory before production (blocking)
 
 > **#0 — MOSTLY CLOSED 2026-07-14 (probe-wiring increment r7), one Docker gate remains.**
@@ -22,7 +49,8 @@ The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Belo
 | ~~0a~~ | **Run the in-image `probe-integration` on Docker** — **DONE 2026-07-14.** Built the image and ran all 6 wired probes with real binaries in-image: **6/6 execute + parse clean** (URL humble/httpx/corsy; Host testssl/dirhunt/subzy vs a real host). The first run corrected the hand-authored I/O model (file-output vs stdout), tool packaging, deps (hexdump/dig), and timeouts — see `construction/scan/code/probe-business-logic-summary.md` §Docker validation. | Exec+run+parse-doesn't-break is now proven. **Still open below (#0d):** positive-*finding* extraction is unverified (benign targets return empty/clean); humble's parser is known to need a rewrite against its real section-based schema. | `.github/workflows/ci.yml` `probe-integration` |
 | 0b | ~~Confirm tool version pins~~ **DONE 2026-07-14** (at first build): `httpx@v1.6.10`, `subzy@v1.1.0` (module path `LukaSikic/subzy`), testssl `v3.2.1`, `dirhunt==0.9.0`; humble & Corsy are **git clones** (no PyPI release), not pip. **Still: pin the `python:3.12-slim-bookworm` base and the git tools by digest/commit** (SECURITY-10/13). | Versions now verified to build & run; digest/commit pin remains for supply-chain integrity. | `Dockerfile`; Dependabot |
 | ~~0c~~ | **subzy writable HOME under read-only rootfs** — **DONE 2026-07-14**: `ENV HOME=/scratch` in the image + `fsGroup: 10001` on the worker pod so the `/scratch` emptyDir is writable by the non-root uid. Validated with `docker run --read-only --tmpfs /scratch` (subzy PASS). | subzy caches its fingerprints DB in `$HOME`; read-only rootfs made `/home/app` unwritable. | `Dockerfile`, `deploy/k8s/worker.yaml` |
-| 0d (partial) | **Validate & fix positive-finding parser schemas** — **DONE for humble/httpx/Corsy 2026-07-15** (increment r8, against OWASP Juice Shop + versioned nginx): humble rewritten to its real section-based schema (headers only → CWE-319/1021; **cookie PS-015/016/017 moved to the observation Set-Cookie engine** — humble never analysed cookies), Corsy rewritten to its real URL-map schema (→ CWE-346), httpx golden refreshed to real output. In-image integration now asserts POSITIVE findings (humble CWE-319, httpx CWE-693, Corsy CWE-346). **STILL OPEN: testssl (PS-002) / dirhunt (PS-004) / subzy (PS-025)** — Juice Shop local http has no weak-TLS / dir-listing / dangling-subdomain surface, so their positive-finding schemas remain unmeasured; validate when such targets are available. | `internal/scan/checking/probe/parsers.go` + `internal/scan/checking/observation/` (cookie sigs); summary `construction/scan/code/parser-fidelity-summary.md` |
+| ~~0d~~ | **Validate & fix positive-finding parser schemas** — **DONE (all 6) 2026-07-15**. r8 closed humble/httpx/Corsy (Juice Shop). **r9 closed testssl/dirhunt/subzy** against a committed `test/fixtures/vuln-target/` fixture + public badssl: real runs found **two fabricated parser schemas that emitted zero findings on real vulnerable output** and rewrote them — dirhunt (real signal `index_of_processors[].crawler_url.flags:"index_of"`, not `results[].flags:"directory-listing"`) and subzy (real signal string `status:"vulnerable"`, not boolean `vulnerable`); testssl schema confirmed correct. In-image end-to-end now asserts POSITIVE findings for all six (dirhunt CWE-548, subzy takeover, testssl CWE-1327, + humble/httpx/Corsy). | `internal/scan/checking/probe/{parsers,parsers_pbt_test,integration_test}.go`, `test/fixtures/vuln-target/`; summary `construction/scan/code/detection-fidelity-summary.md` |
+| 0e | **Provision subzy's fingerprints DB in the image** — subzy v1.1.0's self-fetch URL is dead (returns a 404 text page → "invalid character ':'" parse error), so without a DB every subzy run fails → PS-025 reported `tool-failed`. Discovered in r9; the parser is validated (a mounted real DB → correct takeover finding). Bundle `fingerprints.json` (EdOverflow can-i-take-over-xyz) into the image at subzy's `$HOME/subzy/` path, or supply it via a sidecar/init. **Honest state: false-clean-safe** (tool-failed, never silent clean). | `Dockerfile` (add `COPY` of a pinned fingerprints.json), Dependabot/refresh policy |
 | 1 | **Run the Docker-backed integration suite** — `make test-integration` in a CI job with a Docker daemon | The Mongo/Valkey contract suites compile but were **never executed** (no Docker in the authoring env). Until they pass against real containers, the durable backends are unverified. | `internal/platform/{taskstore,workqueue}/*_test.go` (`//go:build integration`) |
 | 2 | **Bump the Go toolchain to ≥ 1.26.5 and rebuild** | `govulncheck` flagged **GO-2026-5856** (crypto/tls ECH privacy leak) on our call paths (proxy/fetch/Mongo/Valkey TLS). Fixed in go1.26.5. No source change needed. | build pipeline / Dockerfile base |
 | 3 | **Replace every image tag with a digest** (`@sha256:…`); no `latest` | SECURITY-10/13 supply-chain integrity | `Dockerfile`, `deploy/k8s/*.yaml`, `deploy/compose/docker-compose.yml` |
@@ -40,6 +68,12 @@ The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Belo
 1. ~~Split-topology mid-run recovery is not automatic.~~ **RESOLVED 2026-07-11 (ledger-lease increment).** Items carry a lease (owner + expiry, heartbeat-refreshed); a lease-safe periodic sweep (manager + all, `ReclaimExpired`) reclaims only expired-lease inflight items, so a dead worker's items are recovered mid-run without clobbering a live worker's. The dashboard scan list (`/api/introspect/scans`) is also live. Safe-reclaim invariant (at most one recorded outcome per item) proven by a stateful PBT. See `construction/platform/code/lease-business-logic-summary.md`.
 2. ~~Probe adapters are stubs (`argv` nil).~~ **RESOLVED 6/7 2026-07-14 (increment r7).** Six probes wired (argv + JSON parser + bundled binary + process-group kill); changeme (PS-019) deferred (F5). Remaining: the in-image `probe-integration` job must run once on Docker to validate the hand-authored parser schemas against real output (#0a) and confirm the tool version pins (#0b). See `construction/scan/code/probe-business-logic-summary.md`.
 3. **Not in this increment** (infra-plan #3–#6): ProgressReporter→OTel, Authorizer→OIDC/mTLS, ResponseCache→Valkey, FindingsStore→Mongo. The shared-instance placement for #5/#6 is pre-decided in `construction/shared-infrastructure.md`.
+3b. **Observation dictionary/transport (r10 carried, honest):** the well-known provider now delivers the
+   artifact for 6 items, but (a) **PS-009/018/023 dictionaries are still shallow** (C1=A deferred), and (b)
+   **`br`/`zstd` response bodies are not decoded and bodies are capped at 512KB** (P0, C3=A) — on a transport
+   path that advertises those encodings every body regex matches nothing (a silent global false-negative),
+   which can nullify even the newly-wired well-known checks. Fix before relying on passive body signatures
+   behind a `br`/`zstd`-emitting proxy.
 4. **Browser transport hardening** (infra-plan §2): Chromium provisioning, HTTPS CONNECT + MITM CA, session auto-refresh.
 
 ## Suggested next tasks (pick one)

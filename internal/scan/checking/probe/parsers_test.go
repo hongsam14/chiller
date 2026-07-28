@@ -87,16 +87,21 @@ func TestTestsslParse(t *testing.T) {
 }
 
 func TestHumbleParse(t *testing.T) {
-	// Real humble output captured against OWASP Juice Shop (#0d): HSTS is missing
-	// (→ CWE-319) but X-Frame-Options IS set, so clickjacking (CWE-1021) is clean —
-	// exactly one finding, and NO false positive for the present header. humble
-	// owns only header CWEs now; cookies moved to the observation engine.
+	// Real humble output captured against the vuln-target fixture (#0d, r9): the
+	// fixture sets NO security headers, so both HSTS (→ CWE-319) and clickjacking
+	// protection (X-Frame-Options AND CSP both absent → CWE-1021) are missing →
+	// exactly two findings. humble owns only header CWEs now; cookies moved to the
+	// observation engine.
 	fs, err := humbleParse(probeTarget, golden(t, "humble.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fs) != 1 || fs[0].CWEs[0] != "CWE-319" {
-		t.Fatalf("want exactly 1 CWE-319 (HSTS) finding from real Juice Shop output, got %v", cwesOf(fs))
+	got := map[domain.CWE]bool{}
+	for _, c := range cwesOf(fs) {
+		got[c] = true
+	}
+	if len(fs) != 2 || !got["CWE-319"] || !got["CWE-1021"] {
+		t.Fatalf("want CWE-319 (HSTS) + CWE-1021 (clickjacking) from real fixture output, got %v", cwesOf(fs))
 	}
 	assertValid(t, fs, "humble")
 }

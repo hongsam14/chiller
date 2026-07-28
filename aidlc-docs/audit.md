@@ -1103,3 +1103,224 @@ VERIFIED: build/vet/gofmt/arch-check OK, `go test ./...` pass, `-race` clean.
 **Context**: CONSTRUCTION Build&Test + OPERATIONS (#0d) closed via real-run verification.
 
 ---
+
+## New Increment Request — #0d remaining (testssl/dirhunt/subzy positive-finding validation)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: "#0d를 작업해서 검출 정합성을 늘리는 작업이 우선임. ai-dlc로 작업 시작하자"
+**AI Response**: Resumed AI-DLC (brownfield, existing aidlc-state.md). Loaded common rules (process-overview, session-continuity, question-format-guide, welcome-message). Workspace Detection = resume. Prior #0d increment (r8) validated humble/httpx/Corsy positive schemas against Juice Shop + kblife-clone.com; the remaining deferral is testssl (PS-002/CWE-1327 weak TLS), dirhunt (PS-004/CWE-548 dir listing), subzy (PS-025 subdomain takeover) — their positive-finding schemas are unmeasured because a benign local http target lacks weak-TLS / dir-listing / dangling-subdomain surfaces. Entering Requirements Analysis: created target-selection question file (Korean) to decide which vulnerable targets to validate each parser against.
+**Context**: INCEPTION - Workspace Detection (resume) + Requirements Analysis start (#0d remaining, r9).
+
+---
+
+## Requirements Answers — detection-fidelity target selection (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: "답변 완료" — Q1=A (badssl.com 공개 취약 서브도메인 실측), Q2=A (로컬 nginx autoindex 실측), Q3=A (mock 지문 서버로 subzy 실측), Q4=A (실 골든 + 이미지 positive 단언, r8 정직성) + 메모 "이렇게 되면 종합적인 하나의 취약점 서비스를 만드는 것도 좋을거 같은데", Q5=A (3개 모두 이번 증분).
+**AI Response**: Recorded. Detected a soft tension between Q1=A (testssl → external badssl.com) and the Q4 note proposing a single consolidated vulnerable-target service. Since this decides external-dependency vs hermetic-local fixture (and whether a reusable fixture is committed to the repo), raising a clarification round (Korean) before finalizing requirements + workflow planning.
+**Context**: INCEPTION - Requirements Analysis answers (#0d remaining, r9); clarification needed.
+
+---
+
+## Requirements Clarification Answers R1 — consolidated fixture (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: C1=B (부분 통합 — dirhunt+subzy 로컬 fixture, testssl은 badssl 유지) + 메모 "하지만 이전 단계에서 probe한 취약점들도 모두 통합하는건 어떤지?", C2=A (재사용 test-fixture 레포 커밋), C3=A (스코프 라인 유지 — fixture는 테스트 대상일 뿐).
+**AI Response**: Recorded. C2=A/C3=A locked. The C1 note materially widens scope — user wants a single hermetic fixture covering not just this increment's 3 probes but also the r8-validated HTTP probes (humble/httpx/Corsy), removing external target dependencies (Juice Shop/kblife/badssl) and giving one committed regression target. This conflicts slightly with C1=B (testssl stays external). Raising one more focused clarification (R2, Korean) to pin fixture coverage breadth (comprehensive incl. local weak-TLS for testssl vs HTTP-only + external badssl) and whether observation-signature surfaces are seeded now (they are unwired well-known-path fetches → separate backlog).
+**Context**: INCEPTION - Requirements Analysis clarification R1 (#0d remaining, r9); one more round.
+
+---
+
+## Requirements Clarification Answers R2 — fixture coverage (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: C4=B (HTTP-only 통합 — humble/httpx/Corsy/dirhunt/subzy 5개 로컬 fixture, testssl은 외부 badssl 유지), C5=B (observation 시그니처 표면도 fixture에 dormant로 미리 배치).
+**AI Response**: Recorded. No contradictions: C4=B keeps testssl external (consistent with Q1=A). Final decision set for r9 locked — fixture `test/fixtures/vuln-target/` (committed, C2=A) serves 5 HTTP probe surfaces + dormant observation surfaces (C5=B), testssl validated against external badssl (Q1=A/C4=B), subzy via mock fingerprint (Q3=A), real-golden + in-image positive assertion (Q4=A), all 3 target probes this increment (Q5=A), scope line held (C3=A: fixture is a scanned test target, no product-code vuln/active logic). Generated requirements doc `requirements-detection-fidelity.md`. Presenting Requirements Analysis approval gate.
+**Context**: INCEPTION - Requirements Analysis complete (#0d remaining, r9); approval gate.
+
+---
+
+## Requirements Analysis Approval (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Requirements Analysis 완료 — 승인 & 계속 / 변경 요청?"
+**User Input**: "(A)"
+**AI Response**: Approved. Proceeded to Workflow Planning. Created `inception/plans/execution-plan-detection-fidelity.md` (Risk=Medium). EXECUTE: Infrastructure Design (fixture topology, light) · Code Generation · Build and Test · Operations (#0d close). SKIP: Reverse/Stories/App Design/Units/Functional Design/NFR. Updated aidlc-state.md Active Increment → r9. Presenting Workflow Planning approval gate.
+**Context**: INCEPTION - Requirements approved → Workflow Planning (#0d remaining, r9).
+
+---
+
+## Workflow Planning Approval (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Workflow Planning 완료 — 승인 & 계속 / 변경 / 스킵 포함?"
+**User Input**: "(A)"
+**AI Response**: Approved. Proceeded to Infrastructure Design (light, EXECUTE). Inspected current state: testssl/dirhunt/subzy goldens are hand-authored (F6, unverified); host-probe integration only asserts no-error via PROBE_TEST_HOST; humble/httpx/Corsy already have in-process httptest positive integration. Creating vuln-fixture infrastructure-design-plan with embedded questions (Korean) on fixture container topology, integration wiring, network exposure, and subzy fingerprint strategy.
+**Context**: CONSTRUCTION - Infrastructure Design start (#0d remaining, r9).
+
+---
+
+## Infrastructure Design Answers + Artifact (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**User Input**: "답변 완료" — IQ1=A (nginx 1 + mock 1 = 2 서비스), IQ2=A (하이브리드 통합: httptest 유지 + dirhunt/subzy env-gated compose), IQ3=A (호스트 미노출), IQ4=A (body-only 지문).
+**AI Response**: Generated `construction/scan/infrastructure-design/vuln-fixture-design.md`: 2-service compose (`vulnweb` nginx serving humble/httpx/Corsy/dirhunt + observation dormant surfaces; `takeover-mock` for subzy body-only fingerprint) on internal-only `vulnnet` (no host port). Hybrid integration wiring; security-baseline isolation locked. Flagged F6-style empirical unknowns for Code Gen (subzy body-only fingerprint string, real testssl/dirhunt JSON schemas, nginx version-tag). Marked infra plan steps IS-1..6 [x]. Presenting 2-option completion gate.
+**Context**: CONSTRUCTION - Infrastructure Design complete (#0d remaining, r9); approval gate.
+
+---
+
+## Infrastructure Design Approval + Code Gen Part 1 (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt (Infra approval)**: "Infrastructure Design Complete — Request Changes / Continue to Next Stage?"
+**User Input**: "Continue to Next Stage"
+**AI Response**: Infra approved. Entered Code Generation. Verified environment (Docker 29.1.1 + compose v2.40.3, Go 1.26.5; probe bins live only in image → real-measurement path = build image + compose fixture + capture goldens; badssl needs container egress → honest-defer fallback). Created Code Gen Part 1 plan `construction/plans/detection-fidelity-code-generation-plan.md` (11 steps: fixture scaffold → README → subzy fingerprint → golden capture → parser validate/correct → unit positive+PBT → hybrid integration → observation dormant doc → opt-in CI → summary → local gates). Presenting Part 1 approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 1 plan (#0d remaining, r9); approval gate.
+
+---
+
+## Code Gen Part 1 Approved → Part 2 Generation start (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Code Gen Part 1 완료 — Request Changes / Continue to Next Stage?"
+**User Input**: "Continue to Next Stage"
+**AI Response**: Part 1 approved. Starting Part 2 generation per the 11-step plan. Step 1: fixture scaffolding (compose + nginx confs + dormant static surfaces + takeover-mock).
+**Context**: CONSTRUCTION - Code Generation Part 2 (#0d remaining, r9).
+
+---
+
+## Code Gen Part 2 — detection fidelity generated + real-run verified (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Response**: Executed all 11 steps. Built the chiller probe image, stood up the committed `test/fixtures/vuln-target/` fixture, and captured REAL tool output. Real runs corrected TWO fabricated parser schemas: dirhunt (real signal `index_of_processors[].crawler_url.flags:"index_of"`, not `results[].flags:"directory-listing"`) and subzy (real signal string `status:"vulnerable"`, not boolean `vulnerable`) — both previously emitted zero findings on real vulnerable output. testssl/humble/httpx/corsy schemas confirmed correct; goldens re-captured hermetically. Added PBT-D1 (parsers_pbt_test.go), hybrid env-gated integration positives (integration_test.go), opt-in CI job (workflow_dispatch). VERIFIED in-image end-to-end (real adapter defaultExec→parser): TestIntegration_FixtureProbes_PositiveFindings all PASS — dirhunt CWE-548, subzy takeover, testssl CWE-1327 (rc4.badssl.com); URL probes humble/httpx/corsy PASS. Local gates green (build/vet+integration/gofmt/arch-check/race/gosec 0). Honesty invariant + 26-partition + ownership + interfaces + product Dockerfile all unchanged. Honest deferrals: subzy fingerprints-DB runtime provisioning (self-fetch URL dead → tool-failed without DB; parser validated), observation dormant surfaces (no finding until well-known provider wired). Docker resources cleaned up. Presenting Code Gen Part 2 approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 2 complete (#0d remaining, r9); approval gate.
+
+---
+
+## Code Gen Part 2 Approved → Build and Test (r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Code Gen Part 2 완료 — Request Changes / Continue to Next Stage?"
+**User Input**: "Continue to Next Stage"
+**AI Response**: Code Gen approved. Build and Test: local gates already green (build/vet/+integration/gofmt/arch-check/race/gosec 0) and in-image end-to-end positive suite verified during generation. Recording increment build-and-test summary `construction/build-and-test/detection-fidelity-build-and-test-summary.md` with run commands + results + fixture opt-in procedure. Presenting Build and Test approval gate (→ Operations).
+**Context**: CONSTRUCTION - Build and Test (#0d remaining, r9).
+
+---
+
+## Build and Test Approved → Operations (#0d close, r9)
+**Timestamp**: 2026-07-15T00:00:00Z
+**AI Prompt**: "Build and test 완료. Operations로 진행?"
+**User Input**: "(A)"
+**AI Response**: Approved. Operations: updated `operations/production-readiness.md` — #0d marked DONE (all 6 probes: r8 humble/httpx/Corsy + r9 testssl/dirhunt/subzy validated with in-image positive), added row #0e (subzy fingerprints-DB runtime provisioning follow-up; parser validated, tool-failed without DB — false-clean-safe). Updated aidlc-state.md → increment CLOSED. r9 complete: all AI-DLC stages approved + real-run verified. Next candidates: #0e subzy DB bundle · observation well-known-path provider (reuses fixture dormant surfaces) · §2 financial session · §4 Playwright.
+**Context**: OPERATIONS - #0d closed (r9). Increment complete.
+
+---
+
+## New Increment Request — Observation 고도화: well-known-path GET provider (r10)
+**Timestamp**: 2026-07-16T00:00:00Z
+**User Input**: "(2) Observation 고도화를 ai-dlc로 작업 시작"
+**AI Response**: Resumed AI-DLC (brownfield). Workspace Detection = resume. Selected Backlog item "🟠 HIGH — Observation well-known-path GETs are not wired": observation signatures are URL-scoped and only judge the submitted URL's response, so PS-008 robots / PS-011 .env / PS-012 backup / PS-022 crossdomain report false-clean (never receive their artifact), and PS-010 .git / PS-013 admin are N/A instead of judged. Goal: a host-scoped well-known-path provider that GETs /robots.txt, /.env, /.git/config, /crossdomain.xml, a pinned backup-name list, /admin (approved hosts only, rate-budgeted) and feeds each response to the owning signature. r9's vuln-target fixture already seeds these dormant surfaces for validation. Mapping current fan-out + stub signatures before drafting Requirements questions.
+**Context**: INCEPTION - Workspace Detection (resume) + Requirements Analysis start (Observation well-known provider, r10).
+
+---
+
+## Requirements Answers — well-known provider (r10)
+**Timestamp**: 2026-07-16T00:00:00Z
+**User Input**: "답변 완료" — Q1=A (fan-out에서 well-known URL-scoped WorkItem 합성), Q2=A (6개 항목 전부: robots/.env/.git/crossdomain/backup/admin), Q3=A (approved 호스트 기본 on, rate+gate), Q4=**B** (배선 + P1 dictionary 심화 함께), Q5=A (r9 fixture dormant 표면 활성화 + 통합 positive), Q6=A (MaxURLs 제외·per-host rate 공유).
+**AI Response**: Recorded. Q1/2/3/5/6 locked. Q4=B materially widens scope (dictionary fidelity in this increment). Raising one clarification round (Korean): (a) breadth of the P1 dictionary work — only the 6 well-known items being wired vs all P1 items (incl. PS-009 comment / PS-018 session / PS-023 captcha, which are not well-known-path items), and (b) whether the paired FP-tightening (backlog P1 = FN-broaden + FP-narrow) is included.
+**Context**: INCEPTION - Requirements Analysis answers (Observation well-known, r10); clarification needed.
+
+---
+
+## Requirements Clarification Answers — well-known scope (r10)
+**Timestamp**: 2026-07-16T00:00:00Z
+**User Input**: C1=A (dictionary 심화 = 배선하는 well-known 6개 항목만; "B는 다음 작업 todo로"), C2=A (FN 확장 + FP 축소 둘 다, FP/FN 코퍼스 검증), C3=A (P0 transport 미포함).
+**AI Response**: Recorded. No contradictions. Final r10 scope: fan-out synthesizes well-known URL-scoped WorkItems (6 items: PS-008/011/010/022/012/013) per distinct approved host, deduped, MaxURLs-excluded, per-host rate+gate honored; existing URL-scoped signatures judge them (Target.URL=well-known path). Dictionary fidelity for those 6 items only (FN-broaden + FP-narrow, corpus-asserted). P0 transport + PS-009/018/023 dictionaries deferred. Validation reuses r9 vuln-target fixture dormant surfaces (activated). Generated requirements-wellknown.md. Presenting Requirements approval gate.
+**Context**: INCEPTION - Requirements Analysis complete (Observation well-known, r10); approval gate.
+
+---
+
+## Requirements Approval → Workflow Planning (r10)
+**Timestamp**: 2026-07-16T00:00:00Z
+**AI Prompt**: "Requirements 완료 — 승인 & 계속 / 변경?"
+**User Input**: "(A)"
+**AI Response**: Approved. Workflow Planning. Created `inception/plans/execution-plan-wellknown.md` (Risk=Medium). EXECUTE: Functional Design (well-known provider entities + rules + signature anchor/dictionary rules with FP/FN) · Code Generation · Build and Test · Operations. SKIP: Reverse/Stories/App Design/Units/NFR (NFR enumerated in requirements). Presenting Workflow Planning approval gate.
+**Context**: INCEPTION - Requirements approved → Workflow Planning (Observation well-known, r10).
+
+---
+
+## Workflow Planning Approval → Functional Design (r10)
+**Timestamp**: 2026-07-16T00:00:00Z
+**AI Prompt**: "Workflow Planning 완료 — 승인 & 계속 / 변경 / 스킵 포함?"
+**User Input**: "승인 & 계속"
+**AI Response**: Approved. Functional Design. Read signatures.go + fanout.go fully; confirmed orchestrator already imports internal/scan/{exec,fetch,ingest} (platform→scan allowed) so fanOut can consume a well-known path list from the scan layer. Design determined (well-known synthesis rules + per-signature anchor/dictionary FN-broaden + FP-narrow specs); no material ambiguity needing a question round. Generating `construction/scan/functional-design/wellknown-functional-design.md`. Presenting 2-option completion gate.
+**Context**: CONSTRUCTION - Functional Design (Observation well-known, r10).
+
+---
+
+## Functional Design Approval → Code Gen Part 1 (r10)
+**Timestamp**: 2026-07-16T00:00:00Z
+**AI Prompt**: "Functional Design Complete — Request Changes / Continue to Next Stage?"
+**User Input**: "승인 & 계속"
+**AI Response**: FD approved. Code Generation Part 1: created `construction/plans/wellknown-code-generation-plan.md` (steps: wellknown path list, fanOut synthesis, 5 signature v2 anchors, FP/FN corpus, fanout tests, r9 fixture surface activation/extension, integration positive, summary, local gates). Presenting Part 1 approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 1 plan (Observation well-known, r10).
+
+---
+
+## Code Gen Part 1 Approved → Part 2 Generation (r10)
+**Timestamp**: 2026-07-16T00:00:00Z
+**AI Prompt**: "Code Gen Part 1 완료 — Request Changes / Continue to Next Stage?"
+**User Input**: "Continue to Next Stage"
+**AI Response**: Part 1 approved. Starting Part 2 per the 9-step plan: wellknown path list → fanOut synthesis → 5 signature v2 anchors (FN+FP) → FP/FN corpus → fanout tests → r9 fixture activation → integration positive → summary → local gates.
+**Context**: CONSTRUCTION - Code Generation Part 2 (Observation well-known, r10).
+
+---
+
+## Code Gen Part 2 — well-known provider generated + real-run verified (r10)
+**Timestamp**: 2026-07-16T00:00:00Z
+**AI Response**: Executed all 9 steps. Added observation.WellKnownPaths() + fanOut synthesis (authority/port preserved) + 5 signature v2 anchors (FN-broaden + FP-narrow) + FP/FN corpus (27 cases PASS, blocking) + fanout synthesis/MaxURLs-independent tests + activated r9 fixture well-known surfaces + end-to-end integration test. VERIFIED end-to-end: a real orchestrator scan of one homepage URL surfaces all 6 well-known owning CWEs (651 robots / 538 env / 527 git config+HEAD / 942 crossdomain / 530 backup / 306 admin) with a valid 26-partition. Fixed 3 e2e tests exposed by synthesis (WorkerPool rate lifted, FinancialProxy sawAuth→atomic, slow-handler path-isolated) — pre-existing test-side issues, not product bugs. Local gates green (build/vet+integration/gofmt/arch-check/race/gosec 0). 26-partition/ownership/interfaces/product-Dockerfile/probe/platform-seam unchanged. Discoveries logged: well-known shares per-host rate budget (+~3s/host, intended Q6=A), Fetcher's own DNS resolver needs an IP for the compose fixture (real DNS fine). Presenting Code Gen Part 2 approval gate.
+**Context**: CONSTRUCTION - Code Generation Part 2 complete (Observation well-known, r10); approval gate.
+
+---
+## Ambiguous Input at Code Gen Part 2 Approval Gate (r10)
+**Timestamp**: 2026-07-24T00:00:00Z
+**User Input**: "."
+**AI Response**: Input is a single period — not an unambiguous approval or change request. Per code-generation.md Step 15 (approval must be clear and unambiguous), did not proceed. Re-presenting the pending Code Generation Part 2 completion gate for the well-known provider increment (r10).
+**Context**: CONSTRUCTION - Code Generation Part 2 approval gate re-presented (Observation well-known, r10).
+
+---
+## Workflow Code Review — r10 well-known increment (high effort)
+**Timestamp**: 2026-07-24T00:00:00Z
+**User Input**: "/code-review r10"
+**AI Response**: Ran the workflow-backed code review at high effort (26 agents, finder angles + independent adversarial verify per candidate location). 10 findings CONFIRMED, all in the r10 diff: 4 new false-positive classes created by the sweep (backupFileSig path+status only, adminPageSig on soft-404, envExposureSig missing path guard, robotsSensitive bare substrings db/api/sql), 3 false-negative regressions vs r9 (.env APP_KEY + 6-char value floor + placeholder suppressor, backupName keyword-must-be-whole-basename, loginMarker unanchored "login"), and 3 structural issues in fanout.go (host-major append defeats PR-3a interleave and the updated test no longer detects it; synthesized URL-scoped items re-run all 4 URL-scoped probe binaries ~16x; sweep sits outside the SR-1 MaxURLs ceiling with no cap or off-switch). Code Generation Part 2 approval gate remains OPEN and unapproved — no user approval has been given.
+**Context**: CONSTRUCTION - Code Generation Part 2 review (Observation well-known, r10); findings material to the pending approval gate.
+
+---
+## Code Review Fixes Applied — r10 well-known increment (all 10 findings)
+**Timestamp**: 2026-07-24T00:00:00Z
+**User Input**: "10건 전부 수정해줘"
+**AI Response**: Fixed all 10 CONFIRMED findings and added regression tests for each.
+signatures.go (6): envExposureSig path guard (envPath/envTemplatePath) — no more Critical FP on arbitrary pages; env FN restored — APP_?KEY re-covered, value floor removed, envPlaceholderExact map removed so real weak creds fire; backupFileSig looksLikeHTML() gate — soft-404 no longer self-fires; backupName broadened to match backup keyword anywhere in basename (separator-bearing names) with bounded short tokens; adminPageSig now requires positive adminContentMarker — soft-404 homepage no longer fabricates High; loginMarker rewritten to strong login-page signals only (no bare "login" substring) — no longer suppresses genuinely-open admin; robotsSensitive keywords anchored to path segments — db/api/sql substrings no longer FP.
+fanout.go / exec.go / domain / ingest (4): added domain.WorkItem.WellKnown; exec runs observationOnly() on well-known items (probes skipped) — probe amplification removed; finalize.foldOutcomes now reconstructs ran-checkers via ranCheckers(item) mirroring exec (fixed a latent honesty bug where scope-only reconstruction would falsely credit skipped probes as Checked); ScanOptions.DisableWellKnown + MaxWellKnownHosts(default 50) bound the sweep; fanOut interleaves the full URL-scoped set (submitted + well-known) so PR-3a holds.
+New/updated tests: wellknown_sig_test.go (soft-404, APP_KEY, short/weak secrets, not-.env-path, template, site-backup/db_backup/wwwroot, sandbox FP, robots segment FP/FN, admin lastlogin/loginlink FN, signin-title FP); exec_test.go TestRun_WellKnown_ObservationOnly; orchestrator_test.go strengthened interleave (max run ≤2) + TestFanOut_WellKnown_Disabled + TestFanOut_WellKnown_HostCap.
+Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (23 pkg ok, e2e incl.), gosec 0. 26-partition/ownership/interfaces/product-Dockerfile unchanged. Reported outcomes=fixed for all 10 via ReportFindings. Code Gen Part 2 approval gate remains OPEN.
+**Context**: CONSTRUCTION - Code Generation Part 2 review fixes (Observation well-known, r10).
+
+---
+## Code Gen Part 2 Approved → Build and Test (r10)
+**Timestamp**: 2026-07-24T00:00:00Z
+**AI Prompt**: "Code Gen Part 2 완료 (+리뷰 10건 수정 반영) — Request Changes / Continue to Next Stage?"
+**User Input**: "승인 & 계속"
+**AI Response**: Code Generation Part 2 approved (well-known provider + review fixes). Marking Code Generation stage complete for the well-known increment. Proceeding to Build and Test per execution-plan-wellknown.md (EXECUTE: Functional Design · Code Generation · Build and Test · Operations).
+**Context**: CONSTRUCTION - Code Generation approved → Build and Test (Observation well-known, r10).
+
+---
+## Build and Test — well-known increment green (r10)
+**Timestamp**: 2026-07-24T00:00:00Z
+**AI Response**: Ran full local gate suite. ALL GREEN: build, vet, vet -tags integration, gofmt clean, make arch-check OK, `go test -race ./...` 23 pkg ok / 0 FAIL (incl. e2e honest-accounting invariant), gosec 0. Test evidence added this increment documented in `construction/build-and-test/wellknown-build-and-test-summary.md` (FP/FN corpus incl. all review regressions, executor observation-only filter, fan-out interleave/cap/off-switch, e2e accounting). 26-partition/ownership/interfaces/Dockerfile/probe/seam invariants preserved. In-image integration positive (6 CWEs) Docker-delegated as before. Presenting Build and Test approval gate.
+**Context**: CONSTRUCTION - Build and Test complete (Observation well-known, r10); approval gate.
+
+---
+## Build and Test Approved → Operations (r10)
+**Timestamp**: 2026-07-24T00:00:00Z
+**AI Prompt**: "Build and test instructions complete. Ready to proceed to Operations stage?"
+**User Input**: "Approve & Continue"
+**AI Response**: Build and Test approved. Proceeding to Operations (placeholder). Updating operations/production-readiness.md for the well-known increment (r10): observation false-clean closure for 6 items, new operator controls (DisableWellKnown/MaxWellKnownHosts), and carried limitations.
+**Context**: CONSTRUCTION - Build and Test approved → Operations (Observation well-known, r10).
+
+---
+## Operations — production-readiness updated (r10)
+**Timestamp**: 2026-07-24T00:00:00Z
+**AI Response**: Operations (placeholder) reached. Updated `operations/production-readiness.md` with an r10 increment log: well-known provider closes the 6-item observation false-clean/N-A gap; new operator controls DisableWellKnown (off-switch, on by default) + MaxWellKnownHosts (default 50, skip+log beyond cap); operational note on +~3s/host shared rate budget and observation-only execution of synthesized items; carried honest limitations PS-009/018/023 dictionary (C1=A) + P0 transport br/zstd + 512KB (C3=A) added as limitation 3b. No deployment build in MVP workflow.
+**Context**: OPERATIONS - production-readiness updated (Observation well-known, r10).
+
+---

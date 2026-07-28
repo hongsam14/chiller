@@ -25,14 +25,25 @@ type ScanOptions struct {
 	Burst       int      `bson:"burst"`
 	MaxURLs     int      `bson:"maxURLs"`
 	Tools       []string `bson:"tools"`
+	// DisableWellKnown turns off the r10 engine-synthesized well-known-path sweep
+	// (robots/.env/.git/crossdomain/backup/admin). The sweep is on by default
+	// (Q3=A: approved hosts, gate + rate honored); this is the operator off-switch.
+	DisableWellKnown bool `bson:"disableWellKnown,omitempty"`
+	// MaxWellKnownHosts caps how many distinct hosts the sweep runs on. The sweep
+	// synthesizes a fixed set of GETs per distinct host and sits OUTSIDE MaxURLs,
+	// so without its own ceiling a 500-host scan would fan out to thousands of
+	// engine-derived requests. 0 → default cap; hosts beyond the cap are skipped
+	// (logged, not silent).
+	MaxWellKnownHosts int `bson:"maxWellKnownHosts,omitempty"`
 }
 
 // Safe defaults applied to unset (zero) options so an unconfigured scan is never
 // unbounded — a zero RatePerHost would otherwise disable per-host throttling
 // entirely (SR-4).
 const (
-	defaultRatePerHost = 5   // requests/sec/host
-	defaultMaxURLs     = 500 // per-scan URL ceiling (SR-1)
+	defaultRatePerHost       = 5   // requests/sec/host
+	defaultMaxURLs           = 500 // per-scan URL ceiling (SR-1)
+	defaultMaxWellKnownHosts = 50  // hosts the well-known sweep runs on (r10 bound)
 )
 
 // withDefaults fills unset options with safe values. Burst defaults to the rate.
@@ -45,6 +56,9 @@ func (o ScanOptions) withDefaults() ScanOptions {
 	}
 	if o.MaxURLs == 0 {
 		o.MaxURLs = defaultMaxURLs
+	}
+	if o.MaxWellKnownHosts == 0 {
+		o.MaxWellKnownHosts = defaultMaxWellKnownHosts
 	}
 	return o
 }

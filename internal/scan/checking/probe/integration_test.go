@@ -17,6 +17,7 @@ package probe
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"testing"
@@ -97,6 +98,74 @@ func TestIntegration_HostProbes_RealExecAndParse(t *testing.T) {
 			}
 			if _, err := a.Check(domain.ScanContext{Target: target}); err != nil {
 				t.Errorf("%s: real exec+parse errored (schema drift or unreachable target): %v", a.ToolName(), err)
+			}
+		})
+	}
+}
+
+// TestIntegration_FixtureProbes_PositiveFindings proves the host-scoped probes
+// extract a REAL positive finding from a genuinely-weak target (#0d, r9) — the
+// half that the benign no-error check above cannot show. IQ2=A (hybrid): opt-in
+// per probe via env, so base CI stays green (the URL probes above already assert
+// positives in-process). Point each env at the committed vuln-target fixture
+// (dirhunt/subzy — this container must be joined to the fixture's `vulnnet`) or
+// public badssl (testssl — needs outbound TLS):
+//
+//	PROBE_FIXTURE_DIRHUNT=vulnweb        (nginx autoindex → CWE-548)
+//	PROBE_FIXTURE_SUBZY=takeover-mock    (takeover fingerprint → NoCanonicalCWE;
+//	                                      needs subzy's fingerprints DB present)
+//	PROBE_BADSSL_HOST=rc4.badssl.com     (weak TLS → CWE-1327)
+func TestIntegration_FixtureProbes_PositiveFindings(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     string
+		adapter Adapter
+		mk      func(host string) domain.Target
+		wantCWE domain.CWE
+	}{
+		{
+			name: "dirhunt", env: "PROBE_FIXTURE_DIRHUNT", adapter: Dirhunt(), wantCWE: "CWE-548",
+			mk: func(h string) domain.Target { return domain.Target{URL: "http://" + h + "/", Host: h, Scheme: "http"} },
+		},
+		{
+			name: "subzy", env: "PROBE_FIXTURE_SUBZY", adapter: Subzy(), wantCWE: domain.NoCanonicalCWE,
+			mk: func(h string) domain.Target { return domain.Target{URL: "http://" + h + "/", Host: h, Scheme: "http"} },
+		},
+		{
+			name: "testssl.sh", env: "PROBE_BADSSL_HOST", adapter: Testssl(), wantCWE: "CWE-1327",
+			mk: func(h string) domain.Target {
+				return domain.Target{URL: "https://" + h + "/", Host: h, Scheme: "https"}
+			},
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			host := os.Getenv(c.env)
+			if host == "" {
+				t.Skipf("%s unset — set it to the weak target to run this positive check", c.env)
+			}
+			if u, err := url.Parse("http://" + host); err != nil || u.Host == "" {
+				t.Fatalf("%s=%q is not a valid host", c.env, host)
+			}
+			if !binaryOnPath(c.adapter.ToolName()) {
+				t.Skipf("%s not installed in this image — skipping", c.adapter.ToolName())
+			}
+			res, err := c.adapter.Check(domain.ScanContext{Target: c.mk(host)})
+			if err != nil {
+				t.Fatalf("%s: real exec+parse errored (schema drift or unreachable target): %v", c.adapter.ToolName(), err)
+			}
+			found := false
+			for _, f := range res.Findings {
+				for _, cwe := range f.CWEs {
+					if cwe == c.wantCWE {
+						found = true
+					}
+				}
+			}
+			if !found {
+				t.Errorf("%s: expected a %s finding from the weak target, got %d findings %v",
+					c.adapter.ToolName(), c.wantCWE, len(res.Findings), res.Findings)
 			}
 		})
 	}

@@ -1,0 +1,41 @@
+# Deliberately-vulnerable local target fixture for probe positive-finding validation (r9, #0d).
+#
+# TEST-ONLY. This is a target that chiller's probes SCAN — it is NOT part of the
+# product image and carries no chiller code. Do not deploy.
+#
+# security-baseline: no host ports are published (services are reachable only on
+# the internal `vulnnet` bridge), so the intentionally-weak surfaces are never
+# exposed to the host or LAN. A probe runner joins `vulnnet` to reach them by
+# service name (vulnweb, takeover-mock).
+name: chiller-vuln-target
+
+services:
+  # vulnweb serves the HTTP-layer weak surfaces: missing security headers (humble),
+  # a version banner (httpx), permissive CORS (Corsy), an autoindex directory
+  # (dirhunt), plus dormant observation surfaces (robots/.env/.git/crossdomain/
+  # backup/comments/insecure-cookie/session-in-url) that produce no finding today
+  # (the well-known-path GET provider is unwired — separate backlog).
+  vulnweb:
+    image: nginx:1.27-alpine
+    restart: "no"
+    volumes:
+      - ./vulnweb/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./vulnweb/html:/usr/share/nginx/html:ro
+    networks:
+      - vulnnet
+
+  # takeover-mock returns a subdomain-takeover fingerprint body for subzy. The
+  # exact fingerprint string is confirmed against subzy's embedded DB (IQ4=A:
+  # body-only match, no CNAME manipulation).
+  takeover-mock:
+    image: nginx:1.27-alpine
+    restart: "no"
+    volumes:
+      - ./takeover-mock/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./takeover-mock/html:/usr/share/nginx/html:ro
+    networks:
+      - vulnnet
+
+networks:
+  vulnnet:
+    driver: bridge
