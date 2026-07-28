@@ -1,0 +1,4 @@
+repo: https://github.com/projectdiscovery/nuclei-templates
+files: http/exposures/apis/* (generic api-doc formats) + springboot-actuator
+commit: 4924c84cac6ce9772babf48587bed8df9d0040d0
+license: MIT

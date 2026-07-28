@@ -92,8 +92,8 @@ func wellKnownItems(scanID domain.ScanID, set ingest.URLSet) []domain.WorkItem {
 		base := h.Scheme + "://" + authority
 		for _, p := range observation.WellKnownPaths() {
 			out = append(out, domain.WorkItem{
-				ScanID: scanID, Scope: domain.URLScoped, WellKnown: true,
-				Target: domain.Target{Host: h.Host, Scheme: h.Scheme, URL: base + p},
+				ScanID: scanID, Scope: domain.URLScoped, WellKnown: true, WellKnownCWE: p.CWE,
+				Target: domain.Target{Host: h.Host, Scheme: h.Scheme, URL: base + p.Path},
 			})
 		}
 	}

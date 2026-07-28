@@ -89,6 +89,29 @@ func TestRun_WellKnown_ObservationOnly(t *testing.T) {
 	}
 }
 
+// TestRun_WellKnownCWE_OwningSignatureOnly proves the r16 (FR-6) refinement: a
+// well-known item carrying WellKnownCWE runs ONLY the signature that owns that CWE,
+// not the whole observation set. A path-agnostic signature (the PS-009 comment
+// scanner that used to fire ~14× per host on the sweep) must NOT run on a path it
+// does not own — that amplification was the dominant false-positive source.
+func TestRun_WellKnownCWE_OwningSignatureOnly(t *testing.T) {
+	owner := fakeChecker{id: "observation:CWE-306", scope: domain.URLScoped,
+		res: domain.CheckResult{Findings: []domain.Finding{{CWEs: []domain.CWE{"CWE-306"}, TargetURL: "u", SourceTool: "observation:CWE-306", Severity: domain.SevMedium}}}}
+	pathAgnostic := fakeChecker{id: "observation:CWE-615", scope: domain.URLScoped,
+		res: domain.CheckResult{Findings: []domain.Finding{{CWEs: []domain.CWE{"CWE-615"}, TargetURL: "u", SourceTool: "observation:CWE-615", Severity: domain.SevMedium}}}}
+	e := New([]domain.Checker{owner, pathAgnostic}, fakeFetcher{entry: &domain.HAREntry{Status: 200}}, noDisc{}, openGate{})
+
+	out := e.Run(context.Background(), domain.WorkItem{ID: "wk", ScanID: "s", Scope: domain.URLScoped,
+		WellKnown: true, WellKnownCWE: "CWE-306", Target: domain.Target{URL: "https://h/v2/api-docs"}}, fetch.NewInMemoryCache())
+
+	if len(out.Findings) != 1 {
+		t.Fatalf("well-known-CWE findings = %d, want 1 (only the owning signature runs)", len(out.Findings))
+	}
+	if out.Findings[0].CWEs[0] != "CWE-306" {
+		t.Errorf("ran the wrong signature: got %v, want CWE-306", out.Findings[0].CWEs)
+	}
+}
+
 func TestRun_FetchFailure_AllUrlScopedToolFailed(t *testing.T) {
 	checkers := []domain.Checker{
 		fakeChecker{id: "a", scope: domain.URLScoped},

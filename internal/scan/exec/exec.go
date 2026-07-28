@@ -85,7 +85,14 @@ func (e *executor) Run(ctx context.Context, wi domain.WorkItem, cache fetch.Resp
 		// outbound traffic. Coverage is unaffected: the probes still run on the
 		// user's submitted URL items, and the fold keys off checker ownership, not
 		// item count.
-		if wi.WellKnown {
+		// r16 (FR-6): run ONLY the signature that OWNS this well-known path, not the
+		// whole observation set — a path-agnostic scanner (PS-009 comment, PS-023
+		// captcha, cookies) firing on every well-known path was the dominant FP
+		// amplifier. Those still run on the submitted URLs, so coverage is unaffected.
+		// Old items (no WellKnownCWE) fall back to the r10 observation-only set.
+		if wi.WellKnownCWE != "" {
+			checkers = observationForCWE(e.urlScoped, wi.WellKnownCWE)
+		} else if wi.WellKnown {
 			checkers = observationOnly(e.urlScoped)
 		}
 	} else {
@@ -129,4 +136,17 @@ func observationOnly(cs []domain.Checker) []domain.Checker {
 		}
 	}
 	return out
+}
+
+// observationForCWE returns the single observation signature that owns cwe — the
+// checker whose id is "observation:<cwe>" (r16, FR-6). A well-known item runs only
+// its owning signature.
+func observationForCWE(cs []domain.Checker, cwe domain.CWE) []domain.Checker {
+	want := domain.CheckerID("observation:" + string(cwe))
+	for _, c := range cs {
+		if c.ID() == want {
+			return []domain.Checker{c}
+		}
+	}
+	return nil
 }

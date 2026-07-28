@@ -191,8 +191,9 @@ func (o *Orchestrator) itemsByID(ctx context.Context, id domain.ScanID) map[doma
 // ranCheckers returns the checkers that actually ran on an item — it MUST mirror
 // exec's split exactly, since the fold reconstructs per-checker outcome from which
 // checkers ran on which item. URL-scoped items run every URL-scoped checker;
-// a well-known URL-scoped item runs the observation signatures only (exec drops
-// the probe adapters on it); host-scoped items run every host-scoped checker.
+// a well-known URL-scoped item runs ONLY its owning observation signature (r16,
+// FR-6: exec drops the probe adapters AND the non-owning signatures on it);
+// host-scoped items run every host-scoped checker.
 //
 // An invalid scope returns NO checkers rather than falling through to the
 // host-scoped set. This is the fold, so a wrong answer here becomes a wrong
@@ -201,6 +202,9 @@ func (o *Orchestrator) itemsByID(ctx context.Context, id domain.ScanID) map[doma
 func (o *Orchestrator) ranCheckers(wi domain.WorkItem) []domain.Checker {
 	switch wi.Scope {
 	case domain.URLScoped:
+		if wi.WellKnownCWE != "" {
+			return observationCheckerForCWE(o.urlScoped, wi.WellKnownCWE)
+		}
 		if wi.WellKnown {
 			return observationCheckers(o.urlScoped)
 		}
@@ -222,6 +226,18 @@ func observationCheckers(cs []domain.Checker) []domain.Checker {
 		}
 	}
 	return out
+}
+
+// observationCheckerForCWE returns the single observation signature that owns cwe,
+// mirroring exec.observationForCWE (r16, FR-6). Checker id is "observation:<cwe>".
+func observationCheckerForCWE(cs []domain.Checker, cwe domain.CWE) []domain.Checker {
+	want := domain.CheckerID("observation:" + string(cwe))
+	for _, c := range cs {
+		if c.ID() == want {
+			return []domain.Checker{c}
+		}
+	}
+	return nil
 }
 
 // fail transitions a scan to failed (unrecoverable finalize error, PR-6/E-2).
