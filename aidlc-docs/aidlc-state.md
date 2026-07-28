@@ -50,6 +50,18 @@ Q8=B propose IR+COE.
 ## ✅ CLOSED Increment (2026-07-15) — Probe 파서 실측 (#0d, r8)
 Docker 실검증: chiller 이미지로 Juice Shop + **kblife-clone.com(실 HTTPS)** 스캔 → humble이 HSTS(CWE-319)·**clickjacking(CWE-1021)** 실 finding 산출(재작성 전 0개), corsy CORS 실 finding, testssl HTTPS 실행(TLS 양호), 쿠키 소유권 이전 정상(Set-Cookie 없는 페이지 N/A), 26 파티션·정직성 유지. Build&Test(로컬 green)·Operations(production-readiness #0d partial-DONE) 마감. 다음: testssl/dirhunt/subzy positive 실측(취약 대상 확보 시).
 
+## ✅ CLOSED Increment (2026-07-29) — Observation 오탐 저감: OSS-증류 시그니처 + FR-6 소유-only (r16)
+**전 AI-DLC 단계 완료.** Requirements → FD → Code Gen(P1+P2) → 코드리뷰(7건, 6수정/1 trade) → Build&Test(전 게이트 green) → Operations 도달(production-readiness r16 로그). 커밋 `0c4e0d3`·`f35305e`·`170d5c4`·`28364dd`·`1a4d5d8`·`e03b887` (feat/observation-fp). 남은 최상위 갭: **P0 transport br/zstd+512KB**(검출 엔진 최대 correctness 갭) · changeme(PS-019)·subzy DB(#0e).
+
+Branch `feat/observation-fp` (off feat/compliance-report). Goal: Observation 오탐 대량 발생(kbland.kr 15건 중 13건 PS-009 jQuery FP, 4단 증폭) 근절 — 손수 정규식 대신 OSS(gitleaks/ZAP/nuclei) 시그니처를 **authoring-time에 증류**(distill, not use)해 RE2 포팅 + FR-6로 well-known 스윕이 소유 시그니처만 실행.
+- **Requirements** — `inception/requirements/requirements-ps009.md` **approved**. FR-1..10(gitleaks secrets 전량+엔트로피·ZAP url params·nuclei api-docs·ZAP Private-IP RFC1918/EC2/비-prod=Gap B/FR-10·FR-6 소유-only). Nuclei/ZAP=증류 대상이지 런타임 사용 아님(명확화). 일부 갭(발견/서브도메인 스코프) 이월.
+- **Functional Design** — `construction/scan/functional-design/observation-fp-functional-design.md` **approved**. D3(config 파일형=템플릿, DB 아님) 분리, FR-7 dedup-pass 이월(IdentityKey P2 위배). configs/signatures/ 카테고리별 yaml. 취득 파이프라인 D4(Arch A + Level 2 durable).
+- **Code Generation Part 1 (Planning)** — `construction/plans/observation-fp-code-generation-plan.md` **approved** ("Continue"). A~F + 갭 G1~G7 반영. G1(curl@pinned-SHA raw + tools/sigimport 생성기).
+- **Code Generation Part 2 (Generation)** — ✅ **CODE COMPLETE + 게이트 GREEN 2026-07-28, approval pending**. A(third_party/ pinned + tools/sigimport + make signatures/-check) · B(configs/signatures/{secrets 221·url-sensitive·api-docs·internal-disclosure}.yaml, provenance) · C(signatures_config.go fail-closed 로더 + Shannon, 3 시그니처 개조, Default→New(Rules)) · D(WellKnownPath{Path,CWE}, domain.WellKnownCWE, exec.observationForCWE 소유-only, finalize 미러, api-doc 선제) · E(--signatures 플래그) · F(distilled_sig_test/signatures_config_test/exec/orchestrator 코퍼스+ground-truth #3/#10/#15/#16+FR-6 미러+로더 fail-closed+RFC1918 PBT). 23 pkg green. 게이트: build/vet/gofmt/arch-check/race/**gosec 0**/**signatures-check drift 0**/**make secrets**(신규 `.gitleaks.toml`로 22 자기-매칭 해소). **D2 편차**: WellKnown bool + WellKnownCWE 병존(구 큐 하위호환). 26 파티션·소유권·인터페이스·probe·seam·제품 Dockerfile 불변. 커밋 `0c4e0d3`(FR-6+검증).
+- **코드 리뷰(/code-review high) + 수정 2026-07-28** — 커밋 `f35305e`. 워크플로 17에이전트 → 7확정. **golang 철칙 위반 없음**(arch-check·RE2·fail-closed·정직성 미러·one-finding-per-CWE). 수정 6건(생성기 tools/sigimport에서 config 데이터 수정, 재생성 멱등): #1 api-docs 범용 path/marker drop(60→52/15→12, PS-013 FP), #2 PS-018 토큰-경계 매칭+bare user/pass drop(userType/passengers FP), #3 NonProdHosts 다중레이블 FQDN 요구(dev-mode/dev.js FP), #4 매트릭스 경로파라미터(`;jsessionid=`)+phpsessid/sid(FN), #6 scan() 소문자화 1회(perf), #7 dead ValuePatterns 제거. 회귀 테스트 전부 추가, 게이트 재검 green. **#5 스킵(의도적 trade)**: PS-009 범용 앵커(password:/api_key/todo) 제거 유지 — 저엔트로피 하드코딩·dev-note 미탐 tail 수용.
+- **README 갱신 2026-07-28** — 커밋 `170d5c4`. Status/Roadmap 최신화(probe 6/7 배선·well-known 라이브·OSS-증류 시그니처·/report 뷰·framework 선택), 코드 대조 검증.
+- **다음**: Code Gen Part 2 승인 게이트 → Build&Test → Operations. r16 도출 TODO는 Backlog 참조.
+
 ## ✅ CLOSED Increment (2026-07-24) — Observation 고도화: well-known-path GET provider + dictionary 심화 (r10)
 **전 AI-DLC 단계 승인 완료.** Functional Design → Code Generation(P1+P2, +workflow-review 10건 전부 수정) → Build and Test(green) → Operations 전부 승인(2026-07-24). well-known provider가 6개 observation 항목의 false-clean/N-A 갭 해소; 5 시그니처 dictionary 심화(FP/FN 코퍼스). 고른 high 코드리뷰 10건(오탐 4·미탐 3·구조 3, 잠복 fold 정직성 버그 포함) 수정+회귀테스트. 로컬 게이트 green(build/vet+integration/gofmt/arch-check/race 23pkg-0FAIL/gosec 0). 26 파티션·소유권·인터페이스·Dockerfile 불변. 이월(정직): PS-009/018/023 dictionary(C1=A) · P0 transport br/zstd+512KB(C3=A). 다음 후보: PS-009/018/023 dictionary · P0 transport · §2 금융 세션 · §4 Playwright.
 
@@ -139,12 +151,25 @@ Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP 
 
 ## Backlog
 
-**Detection-fidelity priority order** (three payload/quality gaps sit under the green build; do in this order):
-1. 🔴 **Probe CLIs unwired** — 12 items produce *no verdict*. Broadest gap. (below)
-2. 🔴 **Signature transport correctness** — `br`/`zstd` bodies + 512KB truncation can silently break
-   even the *currently-working* checks (global false-negative). Invisible, so ranked with probe. (§ Signature quality → P0)
-3. 🟠 **Observation well-known-path GETs** — 6 items never receive their artifact. (below)
-4. 🟡 **Signature dictionary/value fidelity** — shallow dictionaries → FN, loose anchors → FP, even once payload is delivered. (§ Signature quality → P1)
+**Detection-fidelity priority order** — status as of r16 (2026-07-28). 세 페이로드/품질 갭 중 둘이 마감됨:
+1. ✅ **Probe CLIs** — r7/r8에서 **6/7 배선**(humble·httpx·Corsy·testssl·dirhunt·subzy). `changeme`(PS-019)만 stub, ErrNotWired로 loud-fail. (아래 TOP PRIORITY 섹션은 이력으로 보존)
+2. 🔴 **Signature transport correctness** — `br`/`zstd` 바디 + 512KB truncation은 *여전히 미해결*(글로벌 FN). r16 범위 밖으로 이월. (§ Signature quality → P0)
+3. ✅ **Observation well-known-path GETs** — r10에서 배선(6 항목 아티팩트 전달). (아래 HIGH 섹션은 이력)
+4. ✅ **Signature dictionary/value fidelity** — r16에서 OSS 증류로 대폭 해소(PS-009 토큰·PS-011 키·PS-012 backup-name·PS-018 sid·PS-013 admin/api-docs·Gap B 내부 disclosure). (§ Signature quality → P1은 이력; 잔존은 아래 r16 TODO)
+
+### 📌 r16 도출 TODO (2026-07-28, Observation 오탐 저감 종료 시점)
+검출은 이제 정직하되 커버리지가 완전하지 않음. 우선순위 순:
+- 🔴 **`br`/`zstd`/`deflate` 바디 디코딩** — 미구현. Brotli(Cloudflare 기본) 응답 시 모든 바디 정규식이 압축 바이트를 스캔 → 글로벌 미탐. `Content-Encoding` 기준 디코딩(or `identity` 강제). (P0, 위 2번)
+- 🔴 **512 KiB 바디 truncation이 silent** — 큰 번들의 잘린 뒤쪽 앵커 미탐. truncation 발생 시 기록(truncated 바디에 "clean" 보고 금지). (P0, 위 2번)
+- 🟠 **`changeme`(PS-019) 배선** — 마지막 stub. argv+파서 작성, 실 exec 1회 검증.
+- 🟠 **`subzy` fingerprints DB 런타임 provisioning(#0e)** — DB 없으면 tool-failed(파서는 검증됨). 이미지/런타임에 DB 번들.
+- 🟡 **PS-009 저엔트로피/dev-note 미탐 tail(리뷰 #5 의도적 trade)** — 범용 `password:`/`api_key`/`todo:fixme` 앵커 제거로 하드코딩 저엔트로피 크리덴셜·위험 dev-note 미탐. 재도입 시 오탐 재발 위험 — 필요 시 별도 저-신뢰 시그니처로 분리 검토.
+- 🟡 **잔존 오탐(수용)** — `browser_password_hint` 등 credential-adjacent 파라미터, `dev.min.js` 같은 3-label 코드자산은 여전히 발화 가능(드묾). 실측 오탐 보고 시 재검토.
+- ⚪ **FR-7 dedup-pass 이월** — IdentityKey P2 멱등성 위배로 r16에서 제외. 별도 설계 필요 시 재기.
+- ⚪ **발견/서브도메인 스코프** — 사람 DAST 대비 최대 갭(별개 대형 increment; Backlog TOP 후보).
+
+### 📌 AI-DLC 진행 상태 (r16)
+- ⏳ **Code Gen Part 2 완료 게이트 승인 대기** → Build & Test → Operations. (feat/observation-fp: `0c4e0d3` FR-6+검증 · `f35305e` 리뷰수정 · `170d5c4` README)
 
 ### 🔴 TOP PRIORITY — Wire the 7 probe CLIs for real (infra-plan §3)
 **chiller judges only 10 of the 26 KISA items today.** No OSS tool has ever been executed as a
@@ -260,7 +285,7 @@ These are NOT dropped; they are the planned follow-ups after probe wiring, and p
 - **retryablehttp-go for scan Fetcher resilience** — ✅ **DONE 2026-07-10**. Adopted `github.com/projectdiscovery/retryablehttp-go v1.3.17` in `internal/scan/fetch`: gated client wrapped with bounded exponential backoff, default `WithRetries(2)`. **Rate-budget constraint honored**: `checkRetry` charges `lim.Acquire(host)` per retry → each attempt spends one token (test-proven, no SR-4 bypass). Redirect re-gate preserved on both HTTPClient + the HTTP/2 fallback (`HTTPClient2` pointed at the same gated client → no fail-open seam). 5xx not retried (valid observed response); scope rejection fails fast; per-request ctx deadline remains the SR-8 bound. Tests in `retry_test.go`. Module green (build/vet/test/-race, gofmt, arch-check). Summary appended to `construction/scan/code/business-logic-summary.md`.
 
 ### 🟡 OPERATIONS PHASE
-- [x] Operations — PLACEHOLDER reached 2026-07-10 (MVP). **Infra increment: Operations reached 2026-07-11** — `operations/production-readiness.md` records 3 mandatory pre-prod actions (run Docker Tier-2 integration suite; Go≥1.26.5 for GO-2026-5856; pin image digests) + carried limitations. **well-known increment: Operations reached 2026-07-24** — production-readiness r10 increment log: closes 6-item observation false-clean/N-A gap; new controls DisableWellKnown(off-switch, on-default) + MaxWellKnownHosts(50, skip+log); carried honest limits PS-009/018/023 dictionary(C1=A) + P0 transport br/zstd+512KB(C3=A, limitation 3b). Suggested next: PS-009/018/023 dictionary · P0 transport correctness · ledger lease · infra-plan #5/#6. (approved; no deployment build in MVP workflow)
+- [x] Operations — PLACEHOLDER reached 2026-07-10 (MVP). **Infra increment: Operations reached 2026-07-11** — `operations/production-readiness.md` records 3 mandatory pre-prod actions (run Docker Tier-2 integration suite; Go≥1.26.5 for GO-2026-5856; pin image digests) + carried limitations. **well-known increment: Operations reached 2026-07-24** — production-readiness r10 increment log: closes 6-item observation false-clean/N-A gap; new controls DisableWellKnown(off-switch, on-default) + MaxWellKnownHosts(50, skip+log); carried honest limits PS-009/018/023 dictionary(C1=A) + P0 transport br/zstd+512KB(C3=A, limitation 3b). Suggested next: PS-009/018/023 dictionary · P0 transport correctness · ledger lease · infra-plan #5/#6. (approved; no deployment build in MVP workflow) **r16 increment: Operations reached 2026-07-29** — production-readiness r16 increment log: OSS-distilled signatures (gitleaks/ZAP/nuclei) close the PS-009/018/013 dictionary gap + FR-6 owning-signature-only kills the well-known FP amplifier; carried honest limit narrows to **P0 transport br/zstd+512KB (now the top detection gap, limitation 3b)** + changeme/subzy DB. Code review 7건(6수정/1 trade). (approved; no deployment build in MVP workflow)
 
 ## Story Planning — Confirmed Decisions (Q1-Q10 + C1-C8)
 Personas P1-P4+P6 (Q1=B) · hybrid domain-epic x journey x persona-tag (Q2=A) · 2-tier contexts

@@ -5,6 +5,42 @@
 
 The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Below is what MUST happen before the durable backends run in production, and the honest limitations carried forward.
 
+## Increment log — Observation 오탐 저감: OSS-distilled signatures + FR-6 (r16, 2026-07-29)
+
+> **CLOSED (green, Build & Test approved 2026-07-29).** Replaced the hand-rolled observation dictionaries
+> with signatures **distilled at authoring time** from pinned OSS rulesets — gitleaks (221 secret rules +
+> Shannon-entropy gating + allowlists), OWASP ZAP (url-sensitive params, Private-IP internal disclosure),
+> nuclei-templates (API-doc surfaces) — ported to Go RE2 and pinned under `configs/signatures/`. **Distilled,
+> not executed**: chiller runs no external scanner engine. This closes the r10-carried PS-009/018/013
+> dictionary gap and adds internal/infra disclosure (Gap B). A `tools/sigimport` generator regenerates the
+> config from `third_party/` sources (`make signatures`), drift-checked in CI (`make signatures-check`).
+>
+> **FR-6 — well-known runs only its owning signature:** a synthesized well-known item now executes ONLY the
+> signature that owns its path (via `domain.WorkItem.WellKnownCWE`), not the whole observation set. This
+> removes the dominant false-positive amplifier (a path-agnostic PS-009 comment scan firing ~14×/host on the
+> sweep — 13 of 15 findings on kbland.kr were this). `exec` and the `finalize` fold mirror the single-owner
+> set, so the honest-accounting invariant is preserved.
+>
+> **A workflow code review (high, 7 findings) followed; 6 were fixed and 1 skipped as a documented trade** —
+> see `construction/build-and-test/observation-fp-build-and-test-summary.md`. golang 철칙 (arch-check, RE2,
+> fail-closed boot, honesty mirror, one-finding-per-CWE) all pass.
+>
+> **New operator surface:** `--signatures configs/signatures` (fail-closed boot load — a missing/invalid
+> rule file refuses startup, never silently loads zero rules). Per-scan `framework` selection (KISA/FSEC)
+> and a `GET /report` compliance view were also wired.
+>
+> **Build & Test finding (fixed):** `gitleaks detect` scans committed history, so a pre-commit `make secrets`
+> misses just-added fixtures; the PS-018 test literals tripped the gate once committed → the observation
+> `*_test.go` corpus is allowlisted in `.gitleaks.toml` (secret-shaped by design). Re-verified: no leaks.
+>
+> **Carried forward (honest, not in r16 — see aidlc-state Backlog → r16 도출 TODO):**
+> - **P0 transport correctness** — `br`/`zstd`/`deflate` bodies undecoded + 512 KiB cap truncates silently.
+>   Still the top detection gap: on a `br`-emitting path (Cloudflare default) every body regex sees compressed
+>   bytes → global false-negative. **This is now the single largest correctness gap in the detection engine.**
+> - `changeme` (PS-019) still stubbed; `subzy` needs its fingerprints DB provisioned (#0e below).
+> - Review #5 (intended trade): PS-009 generic `password:`/`api_key`/`todo` anchors removed (they were a major
+>   FP source); the low-entropy hardcoded-credential / dev-note tail is an accepted coverage loss.
+
 ## Increment log — Observation well-known provider (r10, 2026-07-24)
 
 > **CLOSED (green, approved 2026-07-24).** Wired the host-scoped **well-known-path GET provider**: for each
@@ -68,12 +104,12 @@ The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Belo
 1. ~~Split-topology mid-run recovery is not automatic.~~ **RESOLVED 2026-07-11 (ledger-lease increment).** Items carry a lease (owner + expiry, heartbeat-refreshed); a lease-safe periodic sweep (manager + all, `ReclaimExpired`) reclaims only expired-lease inflight items, so a dead worker's items are recovered mid-run without clobbering a live worker's. The dashboard scan list (`/api/introspect/scans`) is also live. Safe-reclaim invariant (at most one recorded outcome per item) proven by a stateful PBT. See `construction/platform/code/lease-business-logic-summary.md`.
 2. ~~Probe adapters are stubs (`argv` nil).~~ **RESOLVED 6/7 2026-07-14 (increment r7).** Six probes wired (argv + JSON parser + bundled binary + process-group kill); changeme (PS-019) deferred (F5). Remaining: the in-image `probe-integration` job must run once on Docker to validate the hand-authored parser schemas against real output (#0a) and confirm the tool version pins (#0b). See `construction/scan/code/probe-business-logic-summary.md`.
 3. **Not in this increment** (infra-plan #3–#6): ProgressReporter→OTel, Authorizer→OIDC/mTLS, ResponseCache→Valkey, FindingsStore→Mongo. The shared-instance placement for #5/#6 is pre-decided in `construction/shared-infrastructure.md`.
-3b. **Observation dictionary/transport (r10 carried, honest):** the well-known provider now delivers the
-   artifact for 6 items, but (a) **PS-009/018/023 dictionaries are still shallow** (C1=A deferred), and (b)
-   **`br`/`zstd` response bodies are not decoded and bodies are capped at 512KB** (P0, C3=A) — on a transport
-   path that advertises those encodings every body regex matches nothing (a silent global false-negative),
-   which can nullify even the newly-wired well-known checks. Fix before relying on passive body signatures
-   behind a `br`/`zstd`-emitting proxy.
+3b. **Observation transport correctness (r16 carried, honest):** ~~(a) PS-009/018/023 dictionaries are
+   shallow~~ **RESOLVED r16** — signatures are now OSS-distilled (gitleaks/ZAP/nuclei, `configs/signatures/`).
+   **(b) `br`/`zstd`/`deflate` response bodies are still not decoded and bodies are capped at 512KB** (P0,
+   C3=A) — on a transport path that advertises those encodings every body regex matches nothing (a silent
+   global false-negative), which can nullify even a wired check. **This is now the top detection correctness
+   gap.** Fix before relying on passive body signatures behind a `br`/`zstd`-emitting proxy.
 4. **Browser transport hardening** (infra-plan §2): Chromium provisioning, HTTPS CONNECT + MITM CA, session auto-refresh.
 
 ## Suggested next tasks (pick one)

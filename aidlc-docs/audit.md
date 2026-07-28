@@ -1360,3 +1360,145 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: CONSTRUCTION - report evidence real-data (r15).
 
 ---
+## AI-DLC 워크플로 시작 — PS-009 정규식 강화 (r16)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "AI-DLC를 사용해서 PS-009 정규식 강화 진행해줘"
+**AI Response**: Workspace Detection = brownfield resume(aidlc-state.md 존재). Extensions 기결정(security/resiliency/PBT enabled). Requirements Analysis 진입. PS-009(sensitiveCommentSig, CWE-615)의 secretAnchor 정규식이 (a) minified JS 오탐(예: jQuery `password:!0`이 `password\s*[=:]`에 매칭 — r15 실데이터로 확인), (b) 현대 고신호 토큰 포맷 미탐(AKIA…/ghp_…/sk_live_…/AIza…/xoxb-…/JWT eyJ…) 및 JSON형 `"password":"…"` 미탐(백로그 signature-quality). Depth=Standard. 명확화 라운드 제시.
+**Context**: INCEPTION - Requirements Analysis start (PS-009 signature hardening, r16).
+
+---
+## Requirements 명확화 답변 — PS-009 (r16)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: Q1=C(값 동반+JS리터럴 가드), Q2=A(큐레이트 고신호 토큰 셋), Q3=A(FP/FN 코퍼스+PBT), Q4=A(새 브랜치).
+**AI Response**: Recorded in requirements-ps009.md §6. 정직한 단서 제기: main엔 r10(PR#13)·r15(PR#20)의 signatures.go 변경이 미병합이라 main에서 바로 브랜치하면 stale→충돌. Workflow Planning에서 브랜치 베이스 확정 예정(권장: feat/compliance-report 기반). Requirements 승인 게이트 제시.
+**Context**: INCEPTION - Requirements clarification resolved (PS-009, r16).
+
+---
+## Requirements 리뷰 — Observation 오탐 진단 + 스코프 확장 (r16)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "현재 상황 파악, 코드베이스 원인 매칭, 기능 요구사항 리뷰. report 신뢰도·품질 매우 낮음, 특히 Observation 오탐 매우 많음."
+**AI Response**: 실측(kbland.kr): 15 finding 중 13(87%)이 PS-009 jQuery 오탐. Explore 코드감사 + 라이브로 4단 증폭 체인 매칭: (1)secretAnchor가 minified JS 매칭(signatures.go:116,132-139) (2)well-known이 관측 13종 전부 실행(exec.go:88-90) (3)well-known마다 같은 JS 재발견(exec.go:63-78) (4)dedup 키가 CWE+URL이라 미병합(finding.go:104-112). 리뷰 결론: PS-009 정규식만으론 구조적 증폭기 잔존→PS-023/003/013/쿠키 재발. 사용자 결정: 스코프 확장(정규식 + FR-6 well-known 소유-시그니처-만 + FR-7 자산/증적 중복제거). requirements-ps009.md §0 진단 + FR-6/7 추가. Requirements 승인 게이트 재제시.
+**Context**: INCEPTION - Requirements review + scope expansion (Observation FP, r16).
+
+---
+## Requirements 개정 — OSS 시그니처 참조(gitleaks) (r16)
+**Timestamp**: 2026-07-27T00:00:00Z
+**User Input**: "정규식을 다른 유명한 오픈소스들(OWASP ZAP)에서 시그니처를 검색해서 참고하면 안돼?"
+**AI Response**: 동의 — 손수 정규식이 오탐 원인. WebSearch로 확인: gitleaks(MIT, 160+ 규칙, config/gitleaks.toml, 정규식+엔트로피+allowlist)가 시크릿 정규식 gold standard. OWASP ZAP은 능동·헤더 위주라 시크릿엔 부적합(다른 관측 항목엔 참조 가치), trufflehog는 AGPL이라 코드복사 회피. FR-1을 gitleaks식 엔트로피 게이트로, FR-2를 gitleaks 토큰 포맷 적응(엔트로피 임계·문서예시 allowlist 포함)으로 개정. requirements-ps009.md §참조원칙 + §7 References 추가. Code Gen에서 gitleaks.toml WebFetch로 이식+attribution. Requirements 승인 게이트 재제시.
+**Context**: INCEPTION - Requirements amended for OSS signature reference (r16).
+
+---
+## 갭 분석 — 사람 발견 취약점 대조 + r16 스코프 확정 (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**User Input**: "kbland-v1.html은 사람이 찾은 취약점. 동일 타겟에 스캔해 잡아야하는데 못잡는 영역 확인."
+**AI Response**: kbland-v1.html(OFFen RED DAST, 16건) 파싱 + 실제 URL 직접 제출 실증. 결과: [지배적] 발견/스코프 갭 — 10+건이 api.kbland.kr(미스캔 서브도메인)·깊은 엔드포인트. 실증: URL 직접 주니 쿠키(614/1004/1275)·CORS(346)·헤더 전부 잡음 → 체커 정상, 크롤/스코프 부재가 원인. [시그니처 갭] PS-018 accessToken 미포함(#3), PS-013 api-docs 미포함(#10), PS-009 실토큰 놓치고 jQuery FP(#15/16). [설계상] XSS/BAC/replay/stacktrace=능동/위임. 사용자 결정: r16=PS-009+PS-018/013 값싼승리, 발견/크롤은 별도 큰 증분 이월(Backlog TOP). requirements-ps009.md §0.2 갭분석 + FR-8/9 추가. reference/kbland-human-dast-report.html 보존. Requirements 승인 게이트 재제시.
+**Context**: INCEPTION - gap analysis vs human findings, r16 scope finalized.
+
+---
+## Requirements 개정 — FR-8/9 OSS 참조 딥리서치 (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**User Input**: "또 값싸다고 하다가 미탐/오탐 만들지 말고, 오픈소스에서 참고할 시그니처가 있는지 deepresearch [FR-8/9 인용]"
+**AI Response**: WebSearch/WebFetch 딥리서치. FR-8 → OWASP ZAP InformationDisclosureInUrlScanRule(Alert 10024, Apache-2.0): 큐레이트 파라미터 목록(user/username/pass/password/pwd/token/ticket/session/jsessionid/sessionid; token substring이 accessToken 등 커버) + 값-패턴 정규식. 손수 추가한 auth/bearer FP위험 항목 폐기, ZAP 목록 채택. FR-9 → Nuclei http/exposures/apis(MIT): swagger/openapi/redoc/wadl/wsdl/asyncapi + configs/graphql·actuator, 경로+본문매처로 경로-only FP 회피. requirements-ps009.md FR-8/9 OSS 참조로 개정 + §7 References에 ZAP/Nuclei 추가(라이선스). Go RE2 이식 + attribution. Requirements 승인 게이트 재제시.
+**Context**: INCEPTION - FR-8/9 OSS reference deep research (r16).
+
+---
+## Requirements 개정 — 카테고리 내 comprehensive (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**User Input**: "항목이 맞다면 필요 패턴은 모두 가져오는게 passive 성격상 더 맞지 않나?"
+**AI Response**: 동의·인정. passive는 비용 거의 0(RE2 선형) → 패턴 축소 이유 없음, FP는 엔트로피게이트+allowlist+앵커가 제어(패턴 빼서 아님). 참조 원칙을 "카테고리 내 comprehensive"로 개정: gitleaks RE2-이식가능 시크릿 규칙 전량(각 엔트로피·allowlist 함께), ZAP 목록 전체, Nuclei는 범용 api-doc 포맷 전부(제품특정 템플릿은 카테고리 밖이라 제외). 정직성 제약: PCRE(백레퍼런스/lookahead) 규칙은 RE2 등가변환 또는 "이식불가" 명시 로그(조용히 skip 금지). FR-2를 전량 적응 + 데이터테이블로 개정. Requirements 승인 게이트 재제시.
+**Context**: INCEPTION - comprehensive-within-category refinement (r16).
+
+---
+## Requirements 승인 → Workflow Planning (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**AI Prompt**: "최종 요구사항 리뷰 — 이전 문제 해결 관점. 갭 A(발견/스코프)·B(내부호스트 #16) 이월할지."
+**User Input**: "갭은 이월하고 지금 승인. 근데 ZAP과 Nuclei는 시그니처를 증류해온다는 말이지 사용한다는 말이 아닌 것을 명확히."
+**AI Response**: Requirements APPROVED. 갭 A(크롤/서브도메인)·B(내부 호스트명 #16) Backlog 이월 확정. "증류이지 사용 아님" 명확화 문서에 명시(§2 참조원칙 박스): gitleaks/ZAP/Nuclei는 저작시점 시그니처 데이터 증류→Go RE2 이식, 런타임 실행/의존/벤더링 없음; 특히 Nuclei는 위임엔진(PS-005/006/026)과 별개, FR-9는 패턴만 증류. Workflow Planning 진입.
+**Context**: INCEPTION - Requirements approved → Workflow Planning (r16).
+
+---
+## Workflow Planning — r16 실행 계획
+**Timestamp**: 2026-07-28T00:00:00Z
+**AI Response**: execution-plan-observation-fp.md 생성. Risk=Medium(FR-6가 exec/fold 정직성 불변식 건드림; 순수 in-process라 배포리스크 낮음). EXECUTE: Functional Design(경량) · Code Generation · Build and Test · Operations. SKIP: Reverse/Stories/App Design/Units/NFR/Infra. 브랜치: feat/compliance-report(r10+r15 포함)에서 feat/observation-fp 분기 권장, PR #20 스택. Code Gen에서 gitleaks/ZAP/Nuclei WebFetch 증류→RE2 이식. Workflow Planning 승인 게이트 제시.
+**Context**: INCEPTION - Workflow Planning (r16).
+
+---
+## 스코프 변경 — 갭 B 포함 (FR-10) (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**User Input**: "갭 B는 이번 해결 범위 내로 포함"
+**AI Response**: 갭 B(내부/인프라 호스트 노출, human #16) r16 포함. OSS 참조 확인: ZAP Private IP Disclosure(Alert 2, CWE-200, Apache-2.0) = RFC1918 IPv4 + EC2 private 호스트명 distill(저-FP). 단 stage-www.kbland.kr은 RFC1918 밖이라 비-prod 호스트 마커 소규모 휴리스틱(명시 라벨, 호스트명 컨텍스트 앵커 FP가드) 추가. 소유 CWE PS-009(CWE-615) 유지→26 파티션 불변. requirements-ps009.md FR-10 추가, IN 목록·verification(#16)·§7 refs·execution-plan 갱신. 갭 A(발견/스코프)만 이월 유지. Workflow Planning 게이트 재제시.
+**Context**: INCEPTION - gap B included via FR-10 (r16).
+
+---
+## Workflow Planning 승인 → Functional Design (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**AI Prompt**: "Workflow Planning 완료 — 승인 & 계속?"
+**User Input**: "Approve & Continue"
+**AI Response**: Workflow Planning approved. feat/compliance-report(r10+r15 포함)에서 feat/observation-fp 분기 생성. Functional Design(경량) 진입: (1) well-known path→owning-CWE 매핑 + WorkItem 전달, (2) dedup/asset 중복제거 전략, (3) 증류 시그니처 데이터-테이블 구조 확정.
+**Context**: INCEPTION - Workflow Planning approved → Functional Design (r16).
+
+---
+## Functional Design (경량) — r16
+**Timestamp**: 2026-07-28T00:00:00Z
+**AI Response**: construction/scan/functional-design/observation-fp-functional-design.md 생성. D1(FR-6): WellKnownPaths→[]{Path,CWE}, WorkItem.WellKnownCWE 추가, fanout 세팅, exec observationForCWE(단일 소유 시그니처), fold ranCheckers 미러; 비소유 시그니처는 제출 URL서 실행→26 파티션 불변. D2(FR-7): dedup 2차 패스 collapseByEvidence(CWE+tool+evidence 동일 시 URL 달라도 병합, 안전-증적 동일=동일 실체); host-level JS dedup은 미채택. D3: secret_rules.go 데이터테이블(secretRule{name,re,minEntropy,allow}) gitleaks 전량, Shannon 엔트로피 헬퍼; ZAP URL params; Nuclei apiDocRule{pathRe,bodyMarker}; ZAP Private-IP RFC1918+EC2+비-prod 휴리스틱; attribution+distilled-not-used 주석. 2-option FD 게이트 제시.
+**Context**: CONSTRUCTION - Functional Design (r16).
+
+---
+## FD 수정 — FR-7 이월 + D3 config 외부화 (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**User Input**: "FR-7은 이월하고 D3 분리로 FD 수정해줘. 데이터 배포 위해 템플릿 형태 지향하는데 꼭 DB에 저장해야 해?"
+**AI Response**: DB 불필요. 룰 데이터를 Go 하드코딩 대신 config 파일(configs/signatures/observation.yaml)로 외부화 — 레포의 mappings/coverage yaml + "Config is data, not code"(mapping.go) 규율에 정합, 재컴파일 없는 배포/갱신(Nuclei 템플릿 배포 동형). 엔진 로직만 Go, 룰 데이터는 config; 부팅 RE2 컴파일·fail-closed(coverage 부팅게이트 동형); 로더는 observation 측(cross-unit 회피); CWE 소유는 구조적이라 boot gate/26파티션 무영향; config는 이미지 동봉. 이로써 부적합2(Go 데이터테이블 이탈)도 해소. FR-7은 dedup 계약(IdentityKey-only, P2 멱등) 위반이라 이월(FR-6가 관측 증폭 이미 제거). FD D2/D3 + requirements FR-7 갱신. FD 게이트 재제시.
+**Context**: CONSTRUCTION - FD revised (config externalization, FR-7 deferred), r16.
+
+---
+## FD 수정 — 시그니처 config 카테고리별 파일(디렉토리) (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**User Input**: "모든 섹션을 observation.yaml 하나에 넣는 건 유지보수 비효율. observation 하위 디렉토리에 섹션마다 yaml 파일이 낫지 않나?"
+**AI Response**: 동의. 단일 observation.yaml → configs/signatures/ 디렉토리 + 카테고리별 파일(secrets.yaml=gitleaks→PS-009, url-sensitive.yaml=ZAP→PS-018, api-docs.yaml=Nuclei→PS-013, internal-disclosure.yaml=ZAP Private-IP→PS-009). 유지보수·독립진화·diff 명확, configs/mappings|coverage/ 디렉토리 관례 + fsec 자동탐색 로더 선례에 정합. 로더=디렉토리 스캔, 부팅 RE2 fail-closed. FD D3 갱신. FD 게이트 재제시.
+**Context**: CONSTRUCTION - FD signature config per-category files (r16).
+
+---
+## FD 승인 → Code Gen Part 1 (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**AI Prompt**: "Functional Design 완료 — Continue to Next Stage?"
+**User Input**: "Continue to Next Stage"
+**AI Response**: FD approved. Code Generation Part 1: construction/plans/observation-fp-code-generation-plan.md 생성. A(OSS 증류 WebFetch→RE2) · B(configs/signatures/ 카테고리별 yaml) · C(로더 부팅 fail-closed + 엔진 로직 개조, Default→New(Rules)) · D(FR-6 well-known 소유-CWE 배선) · E(cmd 로드+주입, Dockerfile) · F(FP/FN 코퍼스+ground-truth+FR-6 구조회귀+로더 fail-closed+PBT+게이트). 리스크 Medium(C5 엔진 구성 개조가 최광범위, F3로 방어). Part 1 승인 게이트 제시.
+**Context**: CONSTRUCTION - Code Generation Part 1 plan (r16).
+
+---
+## 코드 플랜 리뷰 + G1 논의 + 플랜 갱신 (r16)
+**Timestamp**: 2026-07-28T00:00:00Z
+**User Input**: "각 플랜별 근거 추출, 적합성·누락 설계 리뷰" → 이어 "G1(신뢰 취득 방법) 더 논의 — 향후 시그니처 확보에도 매우 중요"
+**AI Response**: 근거-추적 리뷰로 갭 G1~G7 도출(코드사실 실증: Dockerfile:78 COPY configs, WellKnown 사용처 3곳, cmd --mapping/--coverage 선례, e2e:215 PS-009==Checked). G1 심층 논의: WebFetch=요약이라 불완전 → curl@pinned-SHA raw 취득이 프리미티브. 사용자 결정: Arch A(변환→통일 config) + Level 2(durable 파이프라인). FD에 D4(취득 파이프라인: third_party/ pinned 스냅샷+LICENSE, tools/sigimport Go 어댑터, make signatures + CI drift-check, RE2 skip 기록) 추가. 플랜 A를 파이프라인으로 재작성 + 갭 반영: G2(e2e 픽스처 갱신+회귀 F6), G3(--signatures 플래그+role E1), G4(테스트구성+소유권 룰-독립 C6), G5(WellKnownCWE 단일진실 D2), G6(api-doc well-known 스윕 선제 추가 D6), G7(provenance 헤더 A1). Code Gen Part 1 승인 게이트 재제시.
+**Context**: CONSTRUCTION - Code Gen plan reviewed + signature pipeline (Arch A/Level 2), r16.
+
+---
+## Code Generation Part 2 실행 완료 (r16)
+**Timestamp**: 2026-07-28T23:10:00Z
+**AI Response**: 승인된 플랜(observation-fp-code-generation-plan.md) A~F 전 단계 구현·검증 완료. A(third_party/ pinned 스냅샷 + tools/sigimport Go 어댑터 + make signatures/-check) · B(configs/signatures/{secrets,url-sensitive,api-docs,internal-disclosure}.yaml 증류, provenance 헤더) · C(signatures_config.go 로더 부팅 fail-closed + Shannon 엔트로피, sensitiveCommentSig/sessionInURLSig/adminPageSig 개조, Default()→New(Rules)) · D(FR-6: WellKnownPaths()→[]WellKnownPath{Path,CWE}, domain.WorkItem.WellKnownCWE, fanout 세팅, exec.observationForCWE 소유-시그니처-only, finalize.ranCheckers 미러, api-doc 경로 well-known 선제 추가) · E(cmd/chiller --signatures 플래그 로드+주입, Dockerfile:78 확인) · F(검증). 검증: distilled_sig_test.go(PS-009 secrets/internal + PS-018 accessToken + PS-013 api-docs FP/FN 코퍼스, ground-truth human #3/#10/#15/#16), signatures_config_test.go(로더 fail-closed 4케이스 + shipped-config 비어있지-않음 + RFC1918 경계가드 PBT), exec_test.go(TestRun_WellKnownCWE_OwningSignatureOnly), orchestrator_test.go(TestRanCheckers_WellKnownCWE_MirrorsExec 정직성 미러). 전체 스위트 23 패키지 green. 게이트: build·vet·gofmt·arch-check·go test -race·gosec(0, sigimport G301/G306 퍼미션 타이트닝 + G304 nosec 근거)·signatures-check(drift 0)·make secrets. **make secrets 리스크 실현·해소**: gitleaks 22 자기-매칭(gcp 예시키 16 in configs/signatures + test 픽스처/가짜 JWT·Stripe 리터럴 6) 전부 비-크리덴셜 → 신규 .gitleaks.toml(useDefault + configs/signatures/·third_party/·test/fixtures/ 경로 + 정확 리터럴 2 allowlist)로 "no leaks found". **D2 의도적 편차**: WellKnown bool + WellKnownCWE 두 필드 유지(구 큐 항목 하위호환), WellKnownCWE 우선 폴백 WellKnown. Code Gen Part 2 완료 게이트 제시.
+**Context**: CONSTRUCTION - Code Generation Part 2 완료 (r16 Observation 오탐 저감).
+
+---
+## 코드 리뷰(/code-review high) + 지적사항 수정 (r16)
+**Timestamp**: 2026-07-28T23:45:00Z
+**User Input**: "/code-review — aidlc에 기록되어있는 golang 개발 철칙에 위배된 것이 없는지도 추가로 체크" → 이어 "fix 1-4 and 6-7, regenerate, run gates"
+**AI Response**: Workflow 기반 리뷰(17 에이전트, 후보 15 검증, 3 반박, 7 확정). **golang 철칙 통과**(arch-check·RE2·fail-closed·exec↔finalize 정직성 미러·one-finding-per-CWE 위반 없음; .gitleaks.toml 과잉 은폐 아님). 7건: #1 api-docs 범용 path/marker→PS-013 FP, #2 PS-018 param 부분문자열 매칭(userType/passengers FP), #3 NonProdHosts dev[-.]/qa[-.] JS 토큰 FP, #4 PS-018 url.Query()가 PHPSESSID·`;jsessionid=` 매트릭스 누락(FN), #5 PS-009 범용 앵커 제거(의도적 trade), #6 키워드 프리필터 전체 바디 재복사, #7 dead ValuePatterns. **수정 1-4,6-7**(#5는 문서화된 trade로 skip): #1 generator distinctiveAPIDocPath/Marker 필터(paths 60→52, markers 15→12), #2 sessionInURLSig 토큰-경계 매칭(paramTokens split separators+camelCase) + generator가 bare user/pass drop, #3 NonProdHosts 정규식 다중레이블 FQDN 요구, #4 urlParamPairs가 쿼리+매트릭스 파라미터 수집 + phpsessid/sid 추가, #6 scan() lower 1회 문자열화 + bytesContains/bytesToLowerASCII 제거, #7 loader/generator ValuePatterns 필드 제거. `make signatures` 재생성(멱등 확인). 회귀 테스트 추가(FP userType/passengers/boarding_pass, FN phpsessid/sid/matrix, FP dev-mode/dev.js/qa-build + FN staging fqdn, FP generic docs). 게이트 재실행 전부 green: build·gofmt·vet·arch-check·gosec 0·race·make secrets(no leaks)·signatures 멱등. 미커밋(수정+재생성 config는 커밋 시 drift-check 통과).
+**Context**: CONSTRUCTION - Code review findings fixed (r16), Code Gen Part 2 재검증.
+
+## 작업 내역 정리 + TODO를 aidlc-state에 기록 (r16)
+**Timestamp**: 2026-07-29T00:05:00Z
+**User Input**: "한글로 이번 작업 내역 정리 + 도출된 앞으로의 TODO" → "aidlc에 기록"
+**AI Response**: aidlc-state.md 갱신 — (1) r16 ACTIVE increment에 코드리뷰(f35305e)·README(170d5c4)·커밋(0c4e0d3) 기록, (2) Backlog 우선순위 헤더에 probe(✅r7/8)·well-known(✅r10)·dictionary(✅r16) 마감 표시 + P0 transport(br/zstd·512KB)만 잔존, (3) 신규 "r16 도출 TODO" 블록(transport 디코딩·512KB truncation·changeme 배선·subzy DB #0e·PS-009 미탐 tail(리뷰#5 trade)·잔존 오탐 수용·FR-7 이월·발견 스코프) + AI-DLC 진행 상태(Part2 승인 대기).
+**Context**: CONSTRUCTION - 작업 내역/TODO를 aidlc-state.md에 기록 (r16).
+
+## Build and Test 실행 (r16)
+**Timestamp**: 2026-07-29T00:30:00Z
+**User Input**: "커밋 후 build & Test"
+**AI Response**: aidlc 문서 커밋(28364dd) 후 Code Gen Part 2 승인(→Build&Test 진행). 전 게이트 fresh 재실행 GREEN: build·vet·vet-integration·gofmt·arch-check·race(23pkg 0FAIL)·gosec 0·signatures-check(drift 0)·make secrets. **Build&Test 발견·수정**: gitleaks detect는 커밋 히스토리를 스캔 → 커밋 전 make secrets가 신규 픽스처를 못 봄. PS-018 픽스처(access_token=abcdef123456)가 커밋 후 2건 flag → observation *_test.go 코퍼스를 .gitleaks.toml 경로 allowlist(커밋 1a4d5d8), 재실행 no-leaks. 요약 `construction/build-and-test/observation-fp-build-and-test-summary.md` 작성. Operations 진행 승인 게이트 제시.
+**Context**: CONSTRUCTION - Build and Test 완료 (r16).
+
+## Operations 단계 도달 (r16)
+**Timestamp**: 2026-07-29T00:45:00Z
+**User Input**: "Operation stage"
+**AI Response**: Build&Test 승인 → Operations(placeholder) 진행. production-readiness.md에 r16 increment log 추가(OSS-증류 시그니처가 PS-009/018/013 dictionary 갭 마감 + FR-6 소유-only가 well-known FP 증폭원 제거, 코드리뷰 7건 6수정/1trade, --signatures fail-closed 부팅·framework 선택·/report 뷰, Build&Test gitleaks 히스토리-스캔 갭 수정). 한계 3b 갱신(dictionary=r16 RESOLVED, 잔존=P0 transport br/zstd+512KB=최상위 갭). aidlc-state Operations 라인 + r16 increment를 CLOSED로 마킹. r16 전 AI-DLC 단계 완료. Operations는 MVP 워크플로에서 placeholder(배포 빌드 없음).
+**Context**: OPERATIONS - r16 Operations 도달, 증분 종료.

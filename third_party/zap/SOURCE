@@ -1,0 +1,4 @@
+repo: https://github.com/zaproxy/zap-extensions
+files: pscanrules InformationDisclosureInUrl (param list + java) + InfoPrivateAddressDisclosure
+commit: e183846179911b5bde2cb8fe9ca135e9a1ff5d11
+license: Apache-2.0
