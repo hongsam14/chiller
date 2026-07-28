@@ -3,8 +3,9 @@ module github.com/hongsam14/chiller
 go 1.26.5
 
 require (
+	github.com/BurntSushi/toml v1.4.0
 	github.com/playwright-community/playwright-go v0.5200.1
-	github.com/projectdiscovery/retryablehttp-go v1.3.18
+	github.com/projectdiscovery/retryablehttp-go v1.3.20
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.43.0
@@ -16,7 +17,6 @@ require (
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
-	github.com/BurntSushi/toml v1.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057 // indirect
 	github.com/Mzack9999/go-http-digest-auth-client v0.6.1-0.20220414142836-eb8883508809 // indirect
@@ -71,7 +71,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
-	github.com/projectdiscovery/fastdialer v0.5.12 // indirect
+	github.com/projectdiscovery/fastdialer v0.5.13 // indirect
 	github.com/projectdiscovery/hmap v0.0.101 // indirect
 	github.com/projectdiscovery/networkpolicy v0.1.42 // indirect
 	github.com/projectdiscovery/retryabledns v1.0.115 // indirect
