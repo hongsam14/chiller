@@ -279,8 +279,14 @@ func TestE2E_FailIsolation(t *testing.T) {
 // the serial sum, proving the pool runs them in parallel (PR-3a).
 func TestE2E_WorkerPoolConcurrency(t *testing.T) {
 	const delay = 120 * time.Millisecond
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(delay)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only the four submitted work paths are slow. The well-known sweep (r10)
+		// also fetches /robots.txt, /.env, … on this host, but that is orthogonal
+		// to the parallelism being proven here, so those respond fast.
+		switch r.URL.Path {
+		case "/a", "/b", "/c", "/d":
+			time.Sleep(delay)
+		}
 		_, _ = w.Write([]byte(`<html><body>slow</body></html>`))
 	}))
 	defer target.Close()
@@ -290,8 +296,20 @@ func TestE2E_WorkerPoolConcurrency(t *testing.T) {
 	host := hostOf(t, target.URL)
 	urls := []string{target.URL + "/a", target.URL + "/b", target.URL + "/c", target.URL + "/d"}
 
+	// All URLs (and the r10 well-known sweep) share one host, so the default 5/s
+	// per-host rate limiter — not the worker pool — would set the pace. Lift the
+	// rate so this test measures worker-pool parallelism, which is its purpose.
 	start := time.Now()
-	id := h.submit(t, urls, []string{host})
+	id, err := h.orch.CreateScan(context.Background(), ingest.ScanRequest{
+		URLs: urls, Approved: []string{host},
+		Options: ingest.ScanOptions{RatePerHost: 5000, Burst: 5000},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := h.orch.StartScan(context.Background(), id); err != nil {
+		t.Fatalf("start: %v", err)
+	}
 	h.waitState(t, id, platform.StateCompleted, 5*time.Second)
 	elapsed := time.Since(start)
 
@@ -304,10 +322,12 @@ func TestE2E_WorkerPoolConcurrency(t *testing.T) {
 // Financial mode: worker egress routes through the auth-proxy, so the target
 // sees the injected authenticated session (PR-12).
 func TestE2E_FinancialProxy_InjectsSession(t *testing.T) {
-	var sawAuth bool
+	// atomic: the well-known sweep (r10) makes several requests to this server
+	// concurrently, so the handler runs on multiple goroutines.
+	var sawAuth atomic.Bool
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Auth-Session") == "logged-in" {
-			sawAuth = true
+			sawAuth.Store(true)
 		}
 		_, _ = w.Write([]byte(`<html><body>secure</body></html>`))
 	}))
@@ -328,7 +348,7 @@ func TestE2E_FinancialProxy_InjectsSession(t *testing.T) {
 	id := h.submit(t, []string{target.URL + "/"}, []string{host})
 	h.waitState(t, id, platform.StateCompleted, 5*time.Second)
 
-	if !sawAuth {
+	if !sawAuth.Load() {
 		t.Fatalf("target never saw the injected session — financial egress did not route through the proxy")
 	}
 }

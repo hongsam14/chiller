@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<!-- observation dormant (PS-022): overly-permissive crossdomain policy -->
+<cross-domain-policy>
+  <allow-access-from domain="*" />
+</cross-domain-policy>
