@@ -11,11 +11,13 @@
 #      the same rules self-matches by construction.
 #   2. third_party/         — vendored, pinned upstream sources (gitleaks.toml, ZAP,
 #      nuclei). They carry example/test keys from those projects.
-#   3. test fixtures & the fake JWT/Stripe literals used in unit tests — deliberately
-#      secret-shaped inputs that exercise the observation signatures.
+#   3. test fixtures & the observation signature test corpus — the secret-scanner's
+#      own unit tests are full of deliberately secret-shaped literals (JWTs, AWS
+#      keys, access_token=... query params) whose entire purpose is to exercise the
+#      detection rules, so the observation *_test.go files are allowlisted wholesale.
 #
-# Scope is by path (plus two exact literals), so real credentials committed anywhere
-# in application code are still caught.
+# Scope is by path (plus two exact literals for test files outside the observation
+# package), so real credentials committed anywhere in application code are still caught.
 
 [extend]
 useDefault = true
@@ -26,6 +28,7 @@ paths = [
   '''configs/signatures/.*\.ya?ml$''',
   '''third_party/.*''',
   '''test/fixtures/.*''',
+  '''internal/scan/checking/observation/.*_test\.go$''',
 ]
 # Exact fake literals embedded in *_test.go so those files stay otherwise scanned.
 regexes = [
