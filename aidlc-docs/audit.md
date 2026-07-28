@@ -1496,3 +1496,9 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: "커밋 후 build & Test"
 **AI Response**: aidlc 문서 커밋(28364dd) 후 Code Gen Part 2 승인(→Build&Test 진행). 전 게이트 fresh 재실행 GREEN: build·vet·vet-integration·gofmt·arch-check·race(23pkg 0FAIL)·gosec 0·signatures-check(drift 0)·make secrets. **Build&Test 발견·수정**: gitleaks detect는 커밋 히스토리를 스캔 → 커밋 전 make secrets가 신규 픽스처를 못 봄. PS-018 픽스처(access_token=abcdef123456)가 커밋 후 2건 flag → observation *_test.go 코퍼스를 .gitleaks.toml 경로 allowlist(커밋 1a4d5d8), 재실행 no-leaks. 요약 `construction/build-and-test/observation-fp-build-and-test-summary.md` 작성. Operations 진행 승인 게이트 제시.
 **Context**: CONSTRUCTION - Build and Test 완료 (r16).
+
+## Operations 단계 도달 (r16)
+**Timestamp**: 2026-07-29T00:45:00Z
+**User Input**: "Operation stage"
+**AI Response**: Build&Test 승인 → Operations(placeholder) 진행. production-readiness.md에 r16 increment log 추가(OSS-증류 시그니처가 PS-009/018/013 dictionary 갭 마감 + FR-6 소유-only가 well-known FP 증폭원 제거, 코드리뷰 7건 6수정/1trade, --signatures fail-closed 부팅·framework 선택·/report 뷰, Build&Test gitleaks 히스토리-스캔 갭 수정). 한계 3b 갱신(dictionary=r16 RESOLVED, 잔존=P0 transport br/zstd+512KB=최상위 갭). aidlc-state Operations 라인 + r16 increment를 CLOSED로 마킹. r16 전 AI-DLC 단계 완료. Operations는 MVP 워크플로에서 placeholder(배포 빌드 없음).
+**Context**: OPERATIONS - r16 Operations 도달, 증분 종료.
