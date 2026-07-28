@@ -1490,3 +1490,9 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: "한글로 이번 작업 내역 정리 + 도출된 앞으로의 TODO" → "aidlc에 기록"
 **AI Response**: aidlc-state.md 갱신 — (1) r16 ACTIVE increment에 코드리뷰(f35305e)·README(170d5c4)·커밋(0c4e0d3) 기록, (2) Backlog 우선순위 헤더에 probe(✅r7/8)·well-known(✅r10)·dictionary(✅r16) 마감 표시 + P0 transport(br/zstd·512KB)만 잔존, (3) 신규 "r16 도출 TODO" 블록(transport 디코딩·512KB truncation·changeme 배선·subzy DB #0e·PS-009 미탐 tail(리뷰#5 trade)·잔존 오탐 수용·FR-7 이월·발견 스코프) + AI-DLC 진행 상태(Part2 승인 대기).
 **Context**: CONSTRUCTION - 작업 내역/TODO를 aidlc-state.md에 기록 (r16).
+
+## Build and Test 실행 (r16)
+**Timestamp**: 2026-07-29T00:30:00Z
+**User Input**: "커밋 후 build & Test"
+**AI Response**: aidlc 문서 커밋(28364dd) 후 Code Gen Part 2 승인(→Build&Test 진행). 전 게이트 fresh 재실행 GREEN: build·vet·vet-integration·gofmt·arch-check·race(23pkg 0FAIL)·gosec 0·signatures-check(drift 0)·make secrets. **Build&Test 발견·수정**: gitleaks detect는 커밋 히스토리를 스캔 → 커밋 전 make secrets가 신규 픽스처를 못 봄. PS-018 픽스처(access_token=abcdef123456)가 커밋 후 2건 flag → observation *_test.go 코퍼스를 .gitleaks.toml 경로 allowlist(커밋 1a4d5d8), 재실행 no-leaks. 요약 `construction/build-and-test/observation-fp-build-and-test-summary.md` 작성. Operations 진행 승인 게이트 제시.
+**Context**: CONSTRUCTION - Build and Test 완료 (r16).
