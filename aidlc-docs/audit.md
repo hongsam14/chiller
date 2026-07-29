@@ -1548,3 +1548,9 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: "/code-review"
 **AI Response**: 워크플로 리뷰 19에이전트 → 10확정(1 반박). 심각: F1 Mongo sealedOutcome이 Truncated 누락 → 프로덕션에서 FR-T4 무-op(in-memory 테스트만 통과) · F6 transport를 매 NewFetcher마다 clone/replace(풀 재사용 상실+공유 client race) · F3 deflate zlib→flate 폴백이 valid-truncated zlib을 garbage로 · F4 deflate가 압축입력을 출력cap으로 bound · F2 body-read 에러를 failed→ran-truncated로 재분류 · F5 잘린 JS가 페이지 URL로 보고. 수정 8건: (F1/F5/F10) WorkItemOutcome.Truncated bool→TruncatedURLs []string(exec가 정확 URL 수집, finalize가 union·item 재조회 제거, Mongo seal/open에 필드 추가) · (F6/F8) transport mutation 제거—Accept-Encoding 헤더만으로 Go auto-decode 차단(proxy-only로 복원) · (F2) decodeBody가 err 반환, identity 경로 read 에러 전파→fetch 실패 · (F3/F4) decodeDeflate 2바이트 헤더 peek+스트리밍(output-bound, 코덱 정확) · (F7) exec nil-guard. F8 no_change_needed(실 transport는 Accept-Encoding으로 정확, 커스텀 RoundTripper 오작동은 계약 밖) · F9 skipped(latent, 소비자 없음, 후속). 회귀 테스트 추가(IdentityReadError/DeflateTruncatedZlib/NilFetch/Truncated_MainOrJS는 JS URL 단언). 게이트 재검 green(gofmt·vet·gosec 0·race·전체 테스트). golden 철칙 위반 없음.
 **Context**: CONSTRUCTION - Code review findings fixed (r17), Code Gen Part 2 재검증.
+
+## Build and Test 실행 (r17)
+**Timestamp**: 2026-07-29T03:35:00Z
+**User Input**: "커밋부터 하고 build and test"
+**AI Response**: r17 커밋 2개(f332503 코드·baac256 docs) 후 Build&Test. 전 게이트 fresh green: build·vet(+integration)·gofmt·arch-check·race(23pkg 0FAIL)·gosec 0·make secrets(no leaks)·signatures-check(drift 0). make vuln: 신규 deps(brotli·klauspost) 0취약점, 기존 x/text@0.37 GO-2026-5970(v0.39 fixed)는 r17 무관·non-blocking. 요약 transport-build-and-test-summary.md 작성(리뷰 10건 8수정 포함). Operations 진행 승인 게이트 제시.
+**Context**: CONSTRUCTION - Build and Test 완료 (r17).
