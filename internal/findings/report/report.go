@@ -37,6 +37,13 @@ type Report struct {
 	// framework is now a per-scan choice, not a process-global.
 	Frameworks    []domain.Framework `bson:"frameworks,omitempty" json:"frameworks,omitempty"`
 	SchemaVersion int
+	// TruncatedURLs lists the scanned URLs whose body was not fully available as
+	// decoded text (r17, FR-T4) — a compressed body we could not fully decode, an
+	// unknown Content-Encoding, or a body past the size cap. A body-based "no finding"
+	// on these URLs is only a PARTIAL result, so the report surfaces them rather than
+	// letting a truncated page read as an authoritative clean scan. Set by the
+	// orchestrator after Build, so the Builder interface stays unchanged.
+	TruncatedURLs []string `bson:"truncatedUrls,omitempty" json:"truncatedUrls,omitempty"`
 }
 
 // Builder is the ReportBuilder seam (NFR-01).

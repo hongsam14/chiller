@@ -75,6 +75,18 @@ func (e *executor) Run(ctx context.Context, wi domain.WorkItem, cache fetch.Resp
 				js = append(js, je)
 			}
 		}
+		// r17 (FR-T4): record the EXACT URLs whose body was not fully decoded — the
+		// main response and/or any discovered first-party JS asset (PS-009 scans that
+		// JS source, so a truncated JS body is an incomplete scan too). Reporting the
+		// JS asset's own URL, not the page's, points the operator at the right artifact.
+		if html != nil && html.Truncated {
+			out.TruncatedURLs = append(out.TruncatedURLs, wi.Target.URL)
+		}
+		for _, je := range js {
+			if je != nil && je.Truncated {
+				out.TruncatedURLs = append(out.TruncatedURLs, je.URL)
+			}
+		}
 		sctx = domain.ScanContext{Target: wi.Target, Response: html, DiscoveredJS: js} // ④
 		checkers = e.urlScoped
 		// An engine-synthesized well-known item (r10) is a delivery vehicle for the
