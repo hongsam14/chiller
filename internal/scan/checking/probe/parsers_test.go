@@ -63,6 +63,75 @@ func TestHttpxParse(t *testing.T) {
 	}
 }
 
+// r18 (#0e): subzy v1.1.0 has no fingerprint-path flag — it reads
+// `$HOME/subzy/fingerprints.json`. The adapter sets HOME so that resolves to the
+// mounted DB (SUBZY_DB, default /opt/subzy/fingerprints.json → HOME=/opt).
+func TestSubzyRunEnv_HomeFromDB(t *testing.T) {
+	t.Setenv("SUBZY_DB", "") // default
+	if got := subzyRunEnv(); len(got) != 1 || got[0] != "HOME=/opt" {
+		t.Errorf("default subzy env = %v, want [HOME=/opt] (for /opt/subzy/fingerprints.json)", got)
+	}
+	t.Setenv("SUBZY_DB", "/mnt/data/subzy/fingerprints.json")
+	if got := subzyRunEnv(); len(got) != 1 || got[0] != "HOME=/mnt/data" {
+		t.Errorf("override subzy env = %v, want [HOME=/mnt/data]", got)
+	}
+	// subzyOutArg must NOT carry a fingerprint flag (v1.1.0 has none).
+	for _, a := range subzyOutArg(probeTarget, "/tmp/o.json") {
+		if a == "--vuln_list" {
+			t.Error("subzy v1.1.0 has no --vuln_list flag; it must not be passed")
+		}
+	}
+}
+
+// r18 (#0e), review P1/P3/P4: the guard checks the EXACT file subzy reads
+// ($HOME/subzy/fingerprints.json, derived from SUBZY_DB) and fails the adapter
+// (→ tool-failed) on absent / directory / empty-array / malformed — WITHOUT running
+// subzy — so a fingerprint-less run can never masquerade as a clean scan (false-clean).
+func TestSubzyDBGuard(t *testing.T) {
+	home := t.TempDir()
+	db := filepath.Join(home, "subzy", "fingerprints.json") // conforming: <HOME>/subzy/fingerprints.json
+	if err := os.MkdirAll(filepath.Dir(db), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SUBZY_DB", db)
+
+	// (a) missing → fail.
+	if err := subzyDBGuard(domain.ScanContext{}); err == nil {
+		t.Error("missing DB must fail the guard (→ tool-failed)")
+	}
+	// (b) empty array [] → fail (review F4: semantically fingerprint-less).
+	if err := os.WriteFile(db, []byte("[]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := subzyDBGuard(domain.ScanContext{}); err == nil {
+		t.Error("'[]' has no fingerprints → must fail (never false-clean)")
+	}
+	// (c) malformed JSON → fail.
+	if err := os.WriteFile(db, []byte("<html>404</html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := subzyDBGuard(domain.ScanContext{}); err == nil {
+		t.Error("malformed DB must fail the guard")
+	}
+	// (d) a valid, non-empty fingerprint array → passes.
+	if err := os.WriteFile(db, []byte(`[{"fingerprint":"x","service":"y","status":"Vulnerable"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := subzyDBGuard(domain.ScanContext{}); err != nil {
+		t.Errorf("a provisioned non-empty fingerprint DB must pass the guard, got %v", err)
+	}
+	// (e) a directory where the file should be → fail (review F3: Docker auto-creates a dir).
+	dir := t.TempDir()
+	dbdir := filepath.Join(dir, "subzy", "fingerprints.json")
+	if err := os.MkdirAll(dbdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SUBZY_DB", dbdir)
+	if err := subzyDBGuard(domain.ScanContext{}); err == nil {
+		t.Error("a directory at the DB path must fail the guard (missing mount)")
+	}
+}
+
 func TestSubzyParse(t *testing.T) {
 	fs, err := subzyParse(probeTarget, golden(t, "subzy.json"))
 	if err != nil {

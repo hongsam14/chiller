@@ -1,4 +1,4 @@
-.PHONY: build test test-integration lint gosec secrets vuln sbom cover arch-check tidy dev-env ci signatures signatures-check
+.PHONY: build test test-integration lint gosec secrets vuln sbom cover arch-check tidy dev-env ci signatures signatures-check subzy-db
 
 MODULE := github.com/hongsam14/chiller
 
@@ -16,6 +16,13 @@ GOLANGCI_VERSION := v2.6.0
 GOSEC_VERSION    := v2.22.9
 GOVULN_VERSION   := v1.6.0
 GITLEAKS_IMAGE   := zricethezav/gitleaks:v8.21.2@sha256:0e99e8821643ea5b235718642b93bb32486af9c8162c8b8731f7cbdc951a7f46
+# subzy takeover-fingerprint DB (#0e, r18). subzy v1.1.0 self-fetches this on every
+# run from a dead URL → parse error → PS-025 tool-failed. It is subzy's OWN operational
+# data, so we do NOT bundle it in the image: `make subzy-db` provisions it (pinned by
+# commit) to a git-ignored path the operator mounts read-only at /opt/subzy/fingerprints.json (SUBZY_DB). The
+# pin is the single source of truth for the version; refresh = bump SUBZY_DB_COMMIT.
+SUBZY_DB_COMMIT  := 5bd4e12837911c8475486f1da922c9b9c706e632
+SUBZY_DB_URL     := https://raw.githubusercontent.com/EdOverflow/can-i-take-over-xyz/$(SUBZY_DB_COMMIT)/fingerprints.json
 SYFT_IMAGE       := anchore/syft:v1.33.0@sha256:f94e5d9fce1f2278491a8e3a63bd5f6ddb81fdfdbb8bf7a1637565c1d5344357
 
 build:
@@ -106,6 +113,18 @@ dev-env:
 	@printf 'CHILLER_TOKEN=dev-token-%s\nCHILLER_EVIDENCE_KEY=%s\n' \
 		"$$(openssl rand -hex 8)" "$$(openssl rand -base64 32)" > deploy/compose/.env
 	@echo "wrote deploy/compose/.env (gitignored)"
+
+# Provisions subzy's takeover-fingerprint DB (#0e) to a git-ignored path the operator
+# mounts read-only at /opt/subzy/fingerprints.json (SUBZY_DB) (see deploy/compose/docker-compose.yml). Pinned
+# by commit; `-f` fails loudly on a dead/moved URL (fixable by bumping SUBZY_DB_COMMIT),
+# instead of subzy failing silently at scan time. Without this, PS-025 is honest
+# tool-failed. Refresh: bump SUBZY_DB_COMMIT + re-run.
+subzy-db:
+	@mkdir -p deploy/subzy
+	@echo "fetching subzy fingerprints @ $(SUBZY_DB_COMMIT)"
+	@curl -fsSL "$(SUBZY_DB_URL)" -o deploy/subzy/fingerprints.json
+	@test -s deploy/subzy/fingerprints.json || { echo "subzy DB empty — aborting"; rm -f deploy/subzy/fingerprints.json; exit 1; }
+	@echo "wrote deploy/subzy/fingerprints.json (gitignored) from $(SUBZY_DB_URL)"
 
 # Every blocking gate, in one command. This is what CI runs, split across jobs.
 ci: build lint arch-check gosec test test-integration secrets

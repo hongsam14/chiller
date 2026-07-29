@@ -86,6 +86,13 @@ RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app \
 # (subzy downloads its fingerprints DB there on first run) work under a
 # read-only root FS, where /home/app would not be writable (#0c).
 ENV TMPDIR=/scratch HOME=/scratch
+# subzy (PS-025) has no fingerprint-path flag; it reads $HOME/subzy/fingerprints.json
+# (#0e). SUBZY_DB names where the operator MOUNTS the DB read-only; the subzy adapter
+# runs the tool with HOME set so that path resolves (default HOME=/opt). The image
+# bakes NO DB — it is subzy's own operational data, provisioned with `make subzy-db`.
+# Without the mount, subzy self-fetches, fails, and PS-025 is honestly tool-failed
+# (never false-clean — the adapter guards on the file being present + non-empty).
+ENV SUBZY_DB=/opt/subzy/fingerprints.json
 USER app
 
 EXPOSE 8080

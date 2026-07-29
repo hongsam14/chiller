@@ -61,6 +61,13 @@ services:
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    # subzy's takeover-fingerprint DB (#0e), read-only. Run `make subzy-db` first to
+    # provision deploy/subzy/fingerprints.json (gitignored). The mount path matches
+    # SUBZY_DB in the image; the subzy adapter runs subzy with HOME=/opt so subzy reads
+    # /opt/subzy/fingerprints.json. Without this mount, subzy self-fetches, fails, and
+    # PS-025 is honestly tool-failed (never false-clean).
+    volumes:
+      - "../subzy/fingerprints.json:/opt/subzy/fingerprints.json:ro"
     # /scratch is a writable tmpfs; TMPDIR=/scratch is already set in the image.
     # mode=1777 (sticky, world-writable) is REQUIRED: the container runs as the
     # non-root uid 10001, but a bare tmpfs mounts root:root mode=0755 and shadows

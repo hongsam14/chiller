@@ -21,6 +21,9 @@ go.work.sum
 # Secrets — real credentials never enter the repo (SECURITY-12).
 # deploy/compose/.env.example is the committed template and holds no key material.
 deploy/compose/.env
+# subzy takeover-fingerprint DB (#0e) — operator-provisioned via `make subzy-db`,
+# never committed (it is subzy's own community-maintained operational data).
+deploy/subzy/
 sbom.cyclonedx.json
 
 # Editor / OS
