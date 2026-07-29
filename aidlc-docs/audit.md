@@ -1625,3 +1625,51 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: "Continue to Next Stage"
 **AI Response**: Build&Test 승인 → Operations(placeholder). production-readiness.md: #0e → ✅ DONE(r18) 마킹 + r18 increment log 추가(subzy v1.1.0 fingerprint 플래그 없음→HOME 방식, make subzy-db pinned+operator ro 마운트, precheck honesty, 리뷰 8건, in-image A/B/C 검증). aidlc-state: r18 CLOSED increment + Implementation status/Forward TODO에서 #0e DONE 마킹 + Operations 라인. PS-025 판정 가능(operator DB provision 시), 남은 detection 갭=changeme(PS-019)·발견 스코프. r18 전 AI-DLC 단계 완료.
 **Context**: OPERATIONS - r18 Operations 도달, 증분 종료.
+
+## 신규 증분 시작 — changeme/PS-019 wiring (r19)
+**Timestamp**: 2026-07-29T07:10:00Z
+**User Input**: "changeme/ps-019 wiring 작업 착수"
+**AI Response**: AI-DLC 진입(brownfield resume, feat/changeme-wiring off feat/subzy-db). changeme=마지막 probe stub(PS-019 CWE-798 기본자격증명, URL-scoped, activeHint). r7 F5가 미룬 이유=Python2 heritage+active credential-testing+불확실 스키마. **핵심 쟁점(safety/scope)**: changeme는 기본 자격증명을 실제 제출(로그인 시도)=가장 공격적 동작, 스코프결정 "익스플로잇/퍼징 스코프라인" 경계. 계정 lockout·IDS 트리거 리스크. Requirements clarifying: (1) active credential 제출 스코프/공격성 경계, (2) Python/패키징, (3) 스키마. 
+**Context**: INCEPTION - r19 changeme/PS-019 시작.
+
+## Requirements Analysis — 결정 (r19)
+**Timestamp**: 2026-07-29T07:20:00Z
+**User Input**: [AskUserQuestion] Q1=제한적 배선(web/http·최소dict·신뢰경계) · Q2=1회성·재시도 없음
+**AI Response**: requirements-changeme.md 작성. 핵심 긴장: PS-019는 수동탐지 불가(자격증명 실제 시도 필요), changeme가 유일 탐지수단이나 가장 공격적(credential 제출)=스코프라인 경계. FR-C1(제한 배선: web/http 기본자격증명만·1회성·approved∩allowlist·rate/timeout) · FR-C2(이미지 번들, Python버전/패키징은 Infra/Build&Test 스모크) · FR-C3(파서→PS-019 CWE-798 finding, tool-failed≠false-clean) · FR-C4 safety(approved∩allowlist만·single-attempt·no-retry·최소dict·fuzz 안함). NFR: 능동 봉투 최소화·정직성. 검증 리스크(subzy 스모크처럼 Code Gen 조기 스모크): Python버전·web-only/no-retry 플래그·스키마. changeme 제약 불가 시 creds파일 제약 or 재고(tool-failed 바닥). 단일 유닛 scan(probe). Requirements 승인 게이트 제시.
+**Context**: INCEPTION - Requirements Analysis 완료 (r19).
+
+## Requirements 승인 게이트 (r19)
+**Timestamp**: 2026-07-29T07:35:00Z
+**User Input**: "그런데 credential을 제출할 form이 없는 페이지면 작동할 방법이 없는거 아님?" → [B 선택] → "Approve & Continue"
+**AI Response**: 사용자가 changeme의 본질적 한계 지적(로그인 폼 없으면 판정 불가). 두 결정 추가: (1)적용가능성 N/A≠clean(로그인 표면 부재=전제 부재), (2)커버리지 B=well-known 로그인 후보 경로(/admin 등 r10이 이미 fetch)에 changeme 실행하여 홈페이지 스캔서도 로그인 표면 시도, r16 FR-6 선택적 확장(로그인 항목=owning obs sig + changeme), single-attempt+N/A-on-no-form 봉인. requirements-changeme.md 개정. 승인됨 → Workflow Planning.
+**Context**: INCEPTION - Requirements 승인. 증분 범위 확대(probe 어댑터 + well-known 실행경로).
+
+## Workflow Planning (r19)
+**Timestamp**: 2026-07-29T07:45:00Z
+**User Input**: (Requirements 승인 후 자동 진행)
+**AI Response**: changeme-workflow-plan.md 작성. 아키텍처 grounding: changeme는 URL-scoped probe라 exec가 이미 page fetch(sctx.Response)→추가 I/O 없이 로그인폼 유무로 N/A 판정. FR-6 login-candidate(6개 admin 로그인 표면)에만 changeme 추가(api-docs는 제외, 명시적 login 마커 필요). 스테이지: Functional Design=YES(applicability 휴리스틱·well-known login 마커·single-attempt·finding shape), NFR=folded(safety가 FD 핵심), Infra=folded(Dockerfile bake, packaging은 Code Gen 조기 스모크로 subzy 패턴), Code Gen=YES(P1+조기스모크→P2), Build&Test=YES(in-image 스모크 load-bearing: Python버전·플래그·스키마), Operations=YES. 승인 게이트 제시.
+**Context**: INCEPTION - Workflow Planning 완료.
+
+## Functional Design (r19)
+**Timestamp**: 2026-07-29T07:55:00Z
+**User Input**: "Approve & Continue" (Workflow Plan 승인)
+**AI Response**: changeme-functional-design.md 작성. 실코드 grounding(exec.go/probe.go/wellknown.go/har.go/checker.go). 핵심 설계: FD-1 runner에 applicable 훅 추가(precheck=tool-failed와 구별되는 제3결과 N/A; 로그인 표면 부재→NotApplicable, CLI 미실행). FD-2 well-known B: WellKnownPath.Login bool(6개 admin 로그인표면만), WorkItem.LoginCandidate, exec가 LoginCandidate시 changeme append(probeByID), fetch 게이트로 미승인 호스트 조기반환=changeme 미실행. FD-3 Changeme newStub→newWiredFile+applicable, file-output JSON, 플래그는 Code Gen 조기스모크. FD-4 파서: empty→clean, 수락된 기본자격증명→CWE-798 finding(bounded evidence), 스키마드리프트→tool-failed. FD-5 safety folded. FD-6 정직성. hasLoginSurface는 probe 로컬(observation 미import), Body []byte/Headers []Header 실타입 반영. 승인 게이트.
+**Context**: CONSTRUCTION - Functional Design 완료.
+
+## Code Generation P1 — 플랜 + 근거리뷰 (r19)
+**Timestamp**: 2026-07-29T08:10:00Z
+**User Input**: "plan의 근거를 추출하고, 추출한 근거를 디자인을 기반으로 리뷰. 리뷰한 근거를 기반으로 코드 플랜을 리뷰"
+**AI Response**: changeme-code-generation-plan.md 작성(smoke-first). 근거추출→디자인대조→플랜리뷰 수행. 발견 결함: F1(핵심: changeme는 subzy처럼 fingerprint 기반→hasLoginSurface는 과대/과소근사, 진짜 오라클은 changeme "매칭여부"; S0.4에서 확인해 N/A/clean 분기 정직화, hasLoginSurface는 프리필터/안전게이트로) · F2(creds/fingerprint DB가 baked인지 외부인지 미확인→S0.3, 외부면 subzy식 provisioning 범위급증) · F3(positive는 제품지문 mock 필요, 일반폼 불가→S0.5/S4.5 정직화) · F4(FR-C4 능동성 문서화 스텝 없음→Step 5b 추가) · F5(stub/6-wired boot 테스트 갱신→S4.6) · F6(SPA 로그인 N/A 한계 문서화) · F7(Python2면 EOL 인터프리터 번들=보안퇴행, stub유지가 강한 기본값). 플랜에 F1~F5,F7 반영. 승인 게이트.
+**Context**: CONSTRUCTION - Code Gen P1 계획 + 자기리뷰 완료.
+
+## Code Gen P2 — Step 0 스모크 결과 (r19) — STOP & REPORT
+**Timestamp**: 2026-07-29T08:35:00Z
+**User Input**: "Continue to Next Step" (P2 실행 승인)
+**AI Response**: ztgrace/changeme v1.2.3(commit 26fa2c3) 실 Docker 스모크. 결정적 blocker 발견: B1(hard)=Python3.13+에서 telnetlib 제거(PEP594)인데 changeme scan_engine이 모든 프로토콜 스캐너 eager-import→telnet.py가 telnetlib import→python:3.14 base에서 import 불가(stdlib shim or Python≤3.12 pin 필요). B2(heavy)=paramiko/pysnmp/psycopg2/pyodbc/pymongo/selenium(+phantomjs)/shodan eager-import→이미지 ~1.02GB+대규모 공격표면, SECURITY-09 하드닝-미니멀과 정면충돌. B3(perf)=미도달 타겟1개 fingerprint에 ~24s×6 로그인경로/호스트. Positives: Python3 소스(F7 오해정정: telnetlib가 진짜 축), creds baked(F2 해소, 외부DB無), redis 서버 불필요, 출력스키마 {"results":[...]}, 바운드 플래그 좋음(--protocols http 기본/--output json/--name/--fingerprint=F1 오라클). Verdict: 기능적 바운드는 되나 패키징 적합성 나쁨→플랜의 정직 바닥대로 STOP&REPORT. 사용자에게 A(비용감수 배선)/B(stub 유지=tool-failed 정직)/C(자체 경량 PS-019 체크) 결정 에스컬레이션. Steps 1-6 게이트.
+**Context**: CONSTRUCTION - Code Gen P2 Step 0 스모크. 사용자 결정 대기.
+
+## r19 종결 — 사용자 결정 B (stub 유지)
+**Timestamp**: 2026-07-29T08:55:00Z
+**User Input**: [AskUserQuestion] "B: stub 유지 (정직 바닥)" 선택
+**AI Response**: PS-019는 정직하게 tool-failed 유지. changeme 배선/well-known B 확장/applicable 훅 모두 소비자 없어 코드 미배선(기능 변경 0). 정직성 수정만: adapters.go Changeme 주석 + AllAdapters 주석 + Dockerfile 주석의 부정확한 "Python2 heritage"(스모크가 Python3로 반증)를 실제 이유(telnetlib py3.13+ 제거로 python:3.14 import 불가 + ~1GB/공격표면 부적합)로 정정. gofmt 정리(리스트 후 빈 주석줄). go build/vet/fmt green. aidlc-state r19 종결 기록 + Forward TODO의 changeme 항목을 "조사완료·stub유지·미래경로 Option C" 로 갱신. 스모크 이미지 4개 정리. 남은 최상위 갭: 발견/서브도메인 스코프.
+**Context**: CONSTRUCTION - r19 종결(조사→정직 바닥). 코드 기능 무변경, 문서/주석만.
