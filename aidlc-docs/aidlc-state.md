@@ -20,7 +20,7 @@
 
 **The three 2026-07-13 "reality check" gaps are RESOLVED:** ~~12 probe items tool-failed~~ (r7/r8) · ~~6 observation items false-clean~~ (r10) · ~~shallow dictionaries + `br`/`zstd`/512KB transport blind spots~~ (r16 + r17).
 
-**Remaining detection gaps (see Backlog → r16/r17 도출 TODO):** `changeme`(PS-019) unwired · `subzy`(PS-025) fingerprints DB provisioning (#0e) · discovery/subdomain scope (largest gap vs human DAST).
+**Remaining detection gaps (see Backlog → Forward TODO):** `changeme`(PS-019) unwired · discovery/subdomain scope (largest gap vs human DAST). ~~subzy DB (#0e)~~ **DONE r18** — PS-025 judged when the operator provisions the DB (`make subzy-db` + mount).
 
 ## Mission (from the plan)
 Build a dedicated **passive-scanner engine** covering **KISA compliance 26 items (PS-001…PS-026)** —
@@ -58,6 +58,9 @@ Q8=B propose IR+COE.
 
 ## ✅ CLOSED Increment (2026-07-15) — Probe 파서 실측 (#0d, r8)
 Docker 실검증: chiller 이미지로 Juice Shop + **kblife-clone.com(실 HTTPS)** 스캔 → humble이 HSTS(CWE-319)·**clickjacking(CWE-1021)** 실 finding 산출(재작성 전 0개), corsy CORS 실 finding, testssl HTTPS 실행(TLS 양호), 쿠키 소유권 이전 정상(Set-Cookie 없는 페이지 N/A), 26 파티션·정직성 유지. Build&Test(로컬 green)·Operations(production-readiness #0d partial-DONE) 마감. 다음: testssl/dirhunt/subzy positive 실측(취약 대상 확보 시).
+
+## ✅ CLOSED Increment (2026-07-29) — subzy fingerprints DB provisioning (#0e, r18)
+**전 AI-DLC 단계 완료.** Requirements(Q1~3 → 사용자 정정으로 operator-provision, Rationale 절 추가) → Workflow Planning → Infrastructure Design(코드젠 스모크가 Q2-A --vuln_list 없음 발견 → Q2-B HOME 전환) → Code Gen(P1+P2, 플랜 리뷰 P1~5 반영) → 코드리뷰(8건, 6수정/1검증/1스킵) → Build&Test(전 게이트 green + in-image A/B/C) → Operations 도달. 커밋 예정 on feat/subzy-db. **PS-025 살아남**: subzy v1.1.0는 fingerprint 플래그 없음 → `$HOME/subzy/fingerprints.json` 읽음. `make subzy-db`(pinned 5bd4e12 EdOverflow)가 git-ignored deploy/subzy/에 provision, operator가 /opt/subzy에 ro 마운트, 어댑터가 HOME=/opt로 실행. **정직성 subzy와 분리**: precheck가 subzy 읽는 정확한 파일이 present·non-dir·non-empty JSON 배열 아니면 tool-failed(false-clean 원천차단). 리뷰 최심각 F1(guard가 subzy 읽는 경로와 다른 리터럴 검사→false-clean) 수정. 데이터 미커밋(operator-provisioning 철학). 남은 detection 갭: changeme(PS-019)·발견/서브도메인 스코프. probe 인터페이스·파서(r9)·26 파티션·하드닝 불변.
 
 ## ✅ CLOSED Increment (2026-07-29) — P0 Transport Correctness (r17)
 **전 AI-DLC 단계 완료.** Requirements(br/zstd/deflate 디코딩 + 512KiB truncation 노출, Q1~4) → FD(리뷰-교정: 스트리밍 출력-bound·JS-URL 전파·Truncated 정의 확장) → Code Gen(P1+P2) → 코드리뷰(10건, 8수정/1 no-change/1 skip) → Build&Test(전 게이트 green) → Operations 도달. 커밋 `f332503`(코드)·`baac256`(docs)·`eef5e14`(B&T) on feat/transport-correctness. **r10/r16 이월 "P0 transport" 최상위 갭 해소**: fetch/decode.go가 Content-Encoding 디코딩(출력-bound bomb-safe) + Report.TruncatedURLs로 truncation 노출. 리뷰 최심각 2건 사전차단(F1 Mongo seal이 Truncated 누락→프로덕션 무-op, F6 per-scan transport clone→풀재사용 상실+race). 신규 deps brotli·klauspost. 남은 갭: changeme(PS-019)·subzy DB(#0e)·x/text 범프(별도)·F9(latent HAR 헤더). `Fetcher` 인터페이스·26 파티션·안전봉투·Dockerfile·seam 불변.
@@ -174,7 +177,7 @@ Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP 
 
 **검출 커버리지 (다음 increment 후보)**
 - 🟠 **`changeme`(PS-019) 배선** — 마지막 probe stub. argv+파서 작성, 실 exec 1회 검증. → 배선 시 PS-019가 tool-failed→judged.
-- 🟠 **`subzy` fingerprints DB 런타임 provisioning(#0e)** — DB 없으면 PS-025 tool-failed(파서는 검증됨). 이미지에 `fingerprints.json`(EdOverflow) 번들 or init/사이드카.
+- ✅ ~~`subzy` fingerprints DB provisioning(#0e)~~ **DONE r18** — `make subzy-db`(pinned) + operator ro 볼륨 마운트(/opt/subzy) + HOME=/opt. 부재/빈/malformed → precheck tool-failed(false-clean 차단). PS-025 판정 가능.
 - 🔴 **발견/서브도메인 스코프** — 사람 DAST 대비 **최대 갭**. 서브도메인 열거 + JS-발견 URL 확대(별개 대형 increment).
 
 **완료됨 (이월 해소)**
@@ -195,7 +198,8 @@ Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP 
 - ⬜ **§5 OTel(ProgressReporter)·OIDC/mTLS(Authorizer)** — seam 존재, 옆에 구현체 추가.
 
 ### 📌 AI-DLC 진행 상태 (2026-07-29)
-- ✅ **r7~r17 전부 main 병합 완료**(main `71ceabe`). 열린 PR 없음. 다음 increment 대기.
+- ✅ **r7~r17 전부 main 병합 완료**(main `71ceabe`).
+- ✅ **r18(subzy DB #0e) 전 단계 완료** on feat/subzy-db (docs/status-refresh 위) — Operations 도달, PR/병합 대기. 다음: changeme(PS-019) or 발견/서브도메인 스코프.
 
 ### 🔴 TOP PRIORITY — Wire the 7 probe CLIs for real (infra-plan §3)
 **chiller judges only 10 of the 26 KISA items today.** No OSS tool has ever been executed as a

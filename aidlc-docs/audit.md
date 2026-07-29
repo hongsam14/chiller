@@ -1565,3 +1565,63 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: "ai-dlc를 사용해서 현재까지 프로젝트가 어디까지 구현되었는지, 앞으로의 todo가 뭔지 체크 & 업데이트"
 **AI Response**: main(#25 병합, 71ceabe) 실측 + coverage spec(26항목=13 observation·9 probe·4 delegated) 대조. aidlc-state 최신화: (1) 스테일한 "Current Stage"+2026-07-13 Reality check 교체 → "Implementation status (2026-07-29)"(probes 6/7 배선·observation 13항목 well-known+OSS증류+FR-6·transport r17·reporting/FSEC; 3개 옛 갭 전부 RESOLVED). (2) Backlog "r16 도출 TODO"→"Forward TODO (r17 종료)": 남은 검출갭(changeme PS-019·subzy DB #0e·발견/서브도메인 스코프=최대갭) + 소규모 후속(severity.yaml·Stop/Resume 라우트·x/text 범프·r17 F9) + 대형(§2 financial·§4 Playwright·§5 OTel/OIDC). AI-DLC 진행: r7~r17 전부 병합, 열린 PR 없음.
 **Context**: STATUS - 구현상태 실측 + aidlc-state 최신화.
+
+## 신규 증분 시작 — subzy fingerprints DB provisioning (#0e, r18)
+**Timestamp**: 2026-07-29T04:30:00Z
+**User Input**: "subzy DB 작업을 ai-dlc로 시작"
+**AI Response**: AI-DLC 진입(brownfield resume). 문제: subzy v1.1.0가 매 run마다 takeover-fingerprints를 죽은 URL에서 self-fetch → 404 HTML을 JSON 파싱("invalid character ':'") → PS-025 tool-failed(파서·argv는 r9에서 검증됨). 해법: EdOverflow can-i-take-over-xyz fingerprints.json을 pin해 이미지에 번들 + subzy `--vuln_list <path>`로 로컬 참조(self-fetch 제거). 브랜치 feat/subzy-db(off docs/status-refresh). Requirements clarifying 진행.
+**Context**: INCEPTION - r18 subzy DB provisioning 시작.
+
+## Requirements Analysis — 결정 (r18)
+**Timestamp**: 2026-07-29T04:40:00Z
+**User Input**: [AskUserQuestion] Q1=third_party pin 벤더링 · Q2=--vuln_list 플래그 · Q3=수동 pin+SOURCE
+**AI Response**: requirements-subzy-db.md 작성. FR-S1(third_party/subzy/fingerprints.json+LICENSE+SOURCE pin, EdOverflow can-i-take-over-xyz) · FR-S2(Dockerfile COPY→read-only 경로 /opt/subzy/) · FR-S3(subzy --vuln_list <path>, env override SUBZY_VULN_LIST, self-fetch 제거) · FR-S4(Docker 실행 검증: self-fetch 에러 없이 PS-025 실 verdict). NFR: DB 부재 시 self-fetch 폴백→여전히 tool-failed(정직), --vuln_list가 아웃바운드 제거(net-negative), 핀. 단일 유닛 scan(probe), 인터페이스 불변. verification risk: subzy v1.1.0 --vuln_list 정확 플래그/스키마는 Docker에서 확정. Requirements 승인 게이트 제시.
+**Context**: INCEPTION - Requirements Analysis 완료 (r18).
+
+## Rationale 추가 + Workflow Planning (r18)
+**Timestamp**: 2026-07-29T04:50:00Z
+**User Input**: "Rationale 절로 추가하고 Approve & Continue"
+**AI Response**: requirements-subzy-db.md에 ## Rationale 절 추가(근거→추론→요구사항: 범위=provisioning만[r9 파서검증]·FR-S3 self-fetch제거[아웃바운드최소화]·FR-S2 read-only[#0c 하드닝]·FR-S1/Q3 pin[third_party 관례+#0e가 fetch장애 실증]·NFR-S1 정직[tool-failed≠false-clean]). Requirements 승인 → Workflow Planning. execution-plan-subzy-db.md 작성. Risk Low-Medium. EXECUTE: Infrastructure Design·Code Gen(P1+P2)·Build&Test(실 Docker=load-bearing 게이트). SKIP: Reverse/Stories/App Design/Units/Functional Design/NFR. 유일 미지수=subzy --vuln_list 플래그(Docker에서 확정, $HOME 캐시 폴백). Mermaid flow 검증. Workflow Planning 승인 게이트 제시.
+**Context**: INCEPTION - Workflow Planning 완료 (r18).
+
+## Infrastructure Design (r18)
+**Timestamp**: 2026-07-29T05:00:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: subzy-db-infrastructure-design.md 작성. 근거 실측: #0e=subzy v1.1.0 self-fetch URL 죽음(404→"invalid character ':'")→tool-failed, 파서는 mounted DB로 검증됨, integration이 이미 DB 존재 전제(PROBE_FIXTURE_SUBZY). IS1(third_party/subzy/fingerprints.json, 소스=LukaSikic/subzy@v1.1.0 번들[스키마 리스크 최소, provenance=EdOverflow can-i-take-over-xyz], curl@pinned+LICENSE+SOURCE) · IS2(Dockerfile runtime COPY→/opt/subzy/fingerprints.json read-only) · IS3(subzyOutArg --vuln_list $SUBZY_VULN_LIST default /opt/subzy/, ENV; 로컬은 third_party 경로 override; self-fetch 제거) · IS4(SOURCE pin, 수동 refresh, .gitleaks.toml third_party/.* 커버) · IS5(로컬 argv 테스트 + integration PROBE_FIXTURE_SUBZY + in-image Docker=플래그 리스크 확정). 폴백: --vuln_list 미지원 시 $HOME/subzy 캐시(Q2-B), Docker에서 결정. 불변: probe 인터페이스·파서(r9)·하드닝. Infra Design 2-옵션 게이트 제시.
+**Context**: CONSTRUCTION - Infrastructure Design 완료 (r18).
+
+## 설계 방향 수정 — operator-provision(make target + volume) (r18)
+**Timestamp**: 2026-07-29T05:20:00Z
+**User Input**: "스크립트로 받는다는건 makefile에서 vulnDB를 받는 기능을 추가해두고 사용자 책임으로 돌리는거임. 이미지가 실행할때마다 받는다는게 아님"
+**AI Response**: 오해 정정 — 런타임 fetch 아님. Makefile `make subzy-db`(pinned fetch, 1회 provision) + 볼륨 주입 + operator 책임. 이 프로젝트 operator-provisioning 철학(make dev-env·storageState·k8s secret template-only, repo는 데이터 미포함)과 정합. requirements Q1 결정+FR-S1/S2+Rationale 갱신(third_party 벤더링→make target+volume, 데이터를 repo/이미지에 안 굽음, fetch는 provision 시점 1회라 #0e per-run 실패와 무관, 부재 시 tool-failed 정직). Infra Design IS1(make subzy-db→deploy/subzy/ gitignored, 소스 LukaSikic/subzy@v1.1.0)·IS2(read-only 볼륨 마운트, Dockerfile ENV만·bake 없음, compose/k8s 배선)·IS3(--vuln_list $SUBZY_VULN_LIST)·IS4(Makefile pin, no repo DB)·IS5(CI가 make subzy-db 후 마운트) 갱신. execution-plan scope도 갱신. Infra Design 게이트 재제시.
+**Context**: CONSTRUCTION - Infra Design 수정 (r18, operator-provision).
+
+## Code Generation Part 1 (Planning) (r18)
+**Timestamp**: 2026-07-29T05:30:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: subzy-db-code-generation-plan.md 작성. A(Makefile subzy-db pinned curl→deploy/subzy/fingerprints.json + .gitignore) · B(Dockerfile ENV SUBZY_VULN_LIST, bake 없음) · C(compose ro 볼륨 마운트 + k8s 문서) · D(subzyOutArg --vuln_list subzyVulnList() env-default) · E(parsers_test argv + env override, CI probe-integration make subzy-db+SUBZY_VULN_LIST, 게이트) · F(Build&Test Docker=플래그 리스크 확정, 폴백 $HOME/subzy). 소스 URL/commit는 Part 2에서 확정(subzy v1.1.0 파싱 가능한 canonical). Risk Low-Medium. 데이터 미커밋. Part 1 승인 게이트 제시.
+**Context**: CONSTRUCTION - Code Generation Part 1 plan (r18).
+
+## Code Generation Part 2 실행 완료 (r18)
+**Timestamp**: 2026-07-29T05:55:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: 플랜 리뷰 수정(P1 방어가드 D2·P5 문서 G) 반영 후 Part 2 실행. **P3 조기 스모크가 설계 오류 사전 차단**: subzy v1.1.0에 --vuln_list 플래그 없음(run --help 확인) → Q2-A 폐기, Q2-B(HOME→$HOME/subzy 마운트)로 전환, 컨테이너 실측(read-only 마운트+HOME=/opt→subzy exit 0·파싱가능·self-fetch 없음). 구현: Makefile subzy-db(pinned commit 5bd4e12, EdOverflow can-i-take-over-xyz)·.gitignore/.dockerignore(deploy)·Dockerfile ENV SUBZY_DB·compose/k8s ro 볼륨·subzyOutArg(플래그 없음)·SUBZY_DB env+subzyRunEnv HOME 파생(runner.extraEnv)·subzyDBGuard precheck(부재/빈→tool-failed, P1)·deploy README operator 문서. 검증: TestSubzyRunEnv_HomeFromDB·TestSubzyDBGuard·CI probe-fixture-positive(make subzy-db+/opt/subzy 마운트). 게이트 전부 green(gofmt/vet/arch-check/race/gosec 0/secrets no-leaks/drift 0). 요구사항 Q2·FR-S3, Infra IS3 pivot 반영. probe 인터페이스·파서(r9)·26 파티션·하드닝 불변, 데이터 미커밋. Code Gen Part 2 완료 게이트 제시.
+**Context**: CONSTRUCTION - Code Generation Part 2 완료 (r18).
+
+## 코드 리뷰(/code-review high) + 수정 (r18)
+**Timestamp**: 2026-07-29T06:15:00Z
+**User Input**: "/code-review"
+**AI Response**: 워크플로 리뷰 16에이전트 → 8확정(0 반박). 최심각 F1(제가 유발한 버그): subzyDBGuard가 리터럴 SUBZY_DB를 stat하는데 subzy는 HOME-파생 $HOME/subzy/fingerprints.json을 읽음 → 비정합 override 시 guard 통과+subzy 다른 경로 → false-clean 위험. 수정 6건+검증1+스킵1: (F1) guard가 subzyReadFile()=Join(subzyHome(),subzy,fingerprints.json) stat → subzy 읽는 정확한 파일과 동일(정합) · (F3) guard IsDir 거부(Docker 자동생성 디렉토리) · (F4) guard가 JSON 파싱해 non-empty 배열 요구([]·malformed 거부, false-clean 차단) · (F2) k8s configMap optional:true(부재 시 pod stall 대신 subzy만 tool-failed) · (F6) Makefile phantom $SUBZY_VULN_LIST→SUBZY_DB · (F7) host-probe integration이 DB 미provision 시 subzy skip. (F5 no_change) --read-only rootfs 스모크로 확인: HOME=/opt+DB ro-마운트 → subzy exit 0·파싱가능 JSON, $HOME 쓰기 없음. (F8 skip) 리터럴 중복=크로스언어 config 불가피, Go default=문서화된 폴백. 테스트 갱신(guard 부재/[]/malformed/dir→fail, 실 fingerprint→pass). 게이트 전부 green(gofmt·vet+integration·gosec 0·secrets no-leaks·drift 0·전체 테스트). golden 철칙 위반 없음.
+**Context**: CONSTRUCTION - Code review findings fixed (r18), Code Gen Part 2 재검증.
+
+## Build and Test 실행 (r18)
+**Timestamp**: 2026-07-29T06:40:00Z
+**User Input**: "Build and Test 단계로 진행"
+**AI Response**: 전 로컬 게이트 green(build·vet+integration·gofmt·arch-check·race 23pkg 0FAIL·gosec 0·secrets no-leaks·drift 0). **핵심: 실 chiller:r18 이미지 빌드 + in-image 검증**(load-bearing, FR-S4): (A) DB /opt/subzy 마운트 → subzy 어댑터 실행 PASS(HOME=/opt extraEnv, self-fetch 없음, verdict) · (B) DB 없음 → 가드 발동 skip("not provisioned", 프로덕션=tool-failed, 정직 degradation) · (C) --read-only rootfs+tmpfs /scratch+DB → PASS(F5 실이미지 확정, subzy가 read-only에서 $HOME 미기록). 이미지 빌드 clean(Dockerfile ENV+.dockerignore), subzy /usr/local/bin, SUBZY_DB env 확인. positive fixture 단언은 opt-in probe-fixture-positive CI(make subzy-db+/opt/subzy 마운트)로 이월. 리뷰 8건 6수정/1검증/1스킵. 요약 subzy-db-build-and-test-summary.md. Operations 진행 승인 게이트 제시.
+**Context**: CONSTRUCTION - Build and Test 완료 (r18).
+
+## Operations 단계 도달 (r18)
+**Timestamp**: 2026-07-29T06:50:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: Build&Test 승인 → Operations(placeholder). production-readiness.md: #0e → ✅ DONE(r18) 마킹 + r18 increment log 추가(subzy v1.1.0 fingerprint 플래그 없음→HOME 방식, make subzy-db pinned+operator ro 마운트, precheck honesty, 리뷰 8건, in-image A/B/C 검증). aidlc-state: r18 CLOSED increment + Implementation status/Forward TODO에서 #0e DONE 마킹 + Operations 라인. PS-025 판정 가능(operator DB provision 시), 남은 detection 갭=changeme(PS-019)·발견 스코프. r18 전 AI-DLC 단계 완료.
+**Context**: OPERATIONS - r18 Operations 도달, 증분 종료.
