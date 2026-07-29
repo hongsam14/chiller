@@ -60,6 +60,7 @@ type sealedOutcome struct {
 	Findings      []sealedFinding                   `bson:"findings"`
 	Failed        []domain.CheckerID                `bson:"failed"`
 	NotApplicable map[domain.CheckerID][]domain.CWE `bson:"notApplicable"`
+	TruncatedURLs []string                          `bson:"truncatedUrls,omitempty"` // r17 FR-T4
 }
 
 type sealedFinding struct {
@@ -444,6 +445,7 @@ func (m *Mongo) sealOutcome(o domain.WorkItemOutcome) (sealedOutcome, error) {
 		ID:            o.ID,
 		Failed:        o.Failed,
 		NotApplicable: o.NotApplicable,
+		TruncatedURLs: o.TruncatedURLs,
 		Findings:      make([]sealedFinding, 0, len(o.Findings)),
 	}
 	for _, f := range o.Findings {
@@ -474,6 +476,7 @@ func (m *Mongo) openOutcome(s sealedOutcome) (domain.WorkItemOutcome, error) {
 		ID:            s.ID,
 		Failed:        s.Failed,
 		NotApplicable: s.NotApplicable,
+		TruncatedURLs: s.TruncatedURLs,
 		Findings:      make([]domain.Finding, 0, len(s.Findings)),
 	}
 	for _, sf := range s.Findings {

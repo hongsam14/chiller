@@ -100,6 +100,8 @@ const reportHTML = `<!doctype html>
     <div class="sev" id="sev"></div>
   </div>
 
+  <div id="trunc" class="muted" style="display:none;border:1px solid #b58900;background:#fdf6e3;color:#7a5c00;padding:10px 12px;border-radius:6px;margin:12px 0"></div>
+
   <h2>탐지 파이프라인</h2>
   <div class="pipe" id="pipe"></div>
 
@@ -140,6 +142,22 @@ const reportHTML = `<!doctype html>
     set("hTitle", (counts.vulnerable > 0 ? "취약점 " + counts.vulnerable + "건 발견" : "발견된 취약점 없음"));
     document.getElementById("hMeta").textContent =
       total + "/" + total + " 항목 전수 회계 · scan " + (d.scanId||"") + (d.mappingRevision ? " · mapping " + d.mappingRevision : "");
+
+    // r17: warn on truncated/partial bodies — a body-based "clean" on these URLs is
+    // only a partial result and must not be read as an authoritative clean scan.
+    var tr = d.truncatedUrls || [];
+    var trDiv = document.getElementById("trunc");
+    if (tr.length) {
+      trDiv.textContent = "";
+      var b = el("b"); b.textContent = "⚠ 일부 응답 바디가 잘림/미디코드 (" + tr.length + "건) — 아래 URL의 바디 기반 판정은 부분 결과입니다:";
+      trDiv.appendChild(b);
+      var ul = el("ul"); ul.style.margin = "6px 0 0 18px";
+      tr.forEach(function (u) { var li = el("li"); li.textContent = u; ul.appendChild(li); });
+      trDiv.appendChild(ul);
+      trDiv.style.display = "";
+    } else {
+      trDiv.style.display = "none";
+    }
 
     // partition bar
     var bar = document.getElementById("bar"); bar.textContent = "";

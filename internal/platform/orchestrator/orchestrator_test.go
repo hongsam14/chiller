@@ -186,6 +186,27 @@ func TestFanOut_WellKnown_MaxURLsIndependent(t *testing.T) {
 	}
 }
 
+// TestTruncatedURLs_CollectsFromOutcomes pins r17 FR-T4: finalize unions the exact
+// URLs the outcomes carry (dedup + sorted), no item-ledger re-read needed.
+func TestTruncatedURLs_CollectsFromOutcomes(t *testing.T) {
+	got := truncatedURLs([]domain.WorkItemOutcome{
+		{ID: "s#0", TruncatedURLs: []string{"https://h/c", "https://h/c/app.js"}},
+		{ID: "s#1", TruncatedURLs: []string{"https://h/a"}},
+		{ID: "s#2"}, // no truncation → contributes nothing
+		{ID: "s#3", TruncatedURLs: []string{"https://h/a"}}, // duplicate → deduped
+	})
+	want := []string{"https://h/a", "https://h/c", "https://h/c/app.js"} // sorted, deduped
+	if len(got) != len(want) {
+		t.Fatalf("truncatedURLs = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("truncatedURLs = %v, want %v", got, want)
+			break
+		}
+	}
+}
+
 // TestRanCheckers_WellKnownCWE_MirrorsExec pins the honesty invariant for r16
 // (FR-6): the fold's ranCheckers MUST attribute a WellKnownCWE item to ONLY the
 // owning observation signature — the same single checker exec ran. If the fold

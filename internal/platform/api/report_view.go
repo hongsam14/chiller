@@ -71,6 +71,11 @@ type complianceReportDTO struct {
 	MappingRevision string           `json:"mappingRevision,omitempty"`
 	Summary         reportSummaryDTO `json:"summary"`
 	Items           []reportItemDTO  `json:"items"`
+	// TruncatedURLs (r17, FR-T4): URLs whose body was only partially available (a
+	// body we could not fully decode, an unknown Content-Encoding, or a body past the
+	// size cap). A body-based "clean" on these is only a PARTIAL result — the view
+	// warns on them so a truncated page is not read as an authoritative clean scan.
+	TruncatedURLs []string `json:"truncatedUrls,omitempty"`
 }
 
 // getComplianceReport serves the enriched, customer-facing report DTO. 202 while
@@ -113,6 +118,7 @@ func (h *Handler) buildComplianceReport(rep report.Report) complianceReportDTO {
 		Framework:       string(fw),
 		MappingRevision: rep.MappingRevision,
 		Summary:         reportSummaryDTO{BySeverity: map[string]int{}},
+		TruncatedURLs:   rep.TruncatedURLs,
 	}
 
 	ids := make([]string, 0, len(rep.Coverage))

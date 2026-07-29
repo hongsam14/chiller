@@ -12,6 +12,19 @@ import (
 // whether a finding landed on the item, (2) keep delegated/not-applicable/
 // tool-failed distinct, and (3) join catalog title + CWE badges without inventing
 // data. This is the customer-facing honesty contract.
+// r17 (FR-T4): the report DTO surfaces the truncated/partial URLs so the view can warn
+// that a body-based "clean" on them is only a partial result.
+func TestBuildComplianceReport_SurfacesTruncatedURLs(t *testing.T) {
+	rep := report.Report{
+		ScanID:        "s1",
+		TruncatedURLs: []string{"https://h/big.js", "https://h/page"},
+	}
+	dto := (&Handler{}).buildComplianceReport(rep)
+	if len(dto.TruncatedURLs) != 2 || dto.TruncatedURLs[0] != "https://h/big.js" {
+		t.Errorf("truncated URLs not surfaced in DTO: %+v", dto.TruncatedURLs)
+	}
+}
+
 func TestBuildComplianceReport_DerivesResultsAndJoins(t *testing.T) {
 	vuln := domain.Finding{CWEs: []domain.CWE{"CWE-538"}, TargetURL: "https://h/.env", SourceTool: "observation:CWE-538", Severity: domain.SevCritical}
 
