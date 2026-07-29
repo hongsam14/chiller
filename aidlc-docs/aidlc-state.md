@@ -176,7 +176,7 @@ Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP 
 검출은 정직하고, 관측 엔진·transport·probe 대부분이 배선됨. 남은 것:
 
 **검출 커버리지 (다음 increment 후보)**
-- 🟠 **`changeme`(PS-019) 배선** — 마지막 probe stub. argv+파서 작성, 실 exec 1회 검증. → 배선 시 PS-019가 tool-failed→judged.
+- 🟠 **`changeme`(PS-019) — r19 조사 완료, stub 유지 결정.** 실 Docker 스모크(ztgrace/changeme v1.2.3)가 하드닝-미니멀 이미지에 **부적합** 판정: (B1) scan_engine이 telnet 스캐너 eager-import→`telnetlib`(PEP594, py3.13+ 제거)→python:3.14 base에서 import 불가, (B2) paramiko/selenium/DB드라이버 등 eager-import로 **~1GB + 대규모 공격표면**(SECURITY-09 충돌), (B3) 타겟당 ~24s. 도구 자체는 바운드 가능(--protocols http 기본·--fingerprint 오라클·creds baked)이나 **패키징 부적합**. 사용자 결정=**정직 바닥(stub 유지, PS-019 tool-failed)**. **미래 경로**: 상류가 telnet eager-import 제거+deps 경량화 시 재검토, 또는 **Option C(자체 경량 HTTP 기본자격증명 체크)** — 외부 바이너리·이미지 bloat 없이 PS-019 판정(권장 대안). 근거: `construction/plans/changeme-code-generation-plan.md` Step 0 RESULTS.
 - ✅ ~~`subzy` fingerprints DB provisioning(#0e)~~ **DONE r18** — `make subzy-db`(pinned) + operator ro 볼륨 마운트(/opt/subzy) + HOME=/opt. 부재/빈/malformed → precheck tool-failed(false-clean 차단). PS-025 판정 가능.
 - 🔴 **발견/서브도메인 스코프** — 사람 DAST 대비 **최대 갭**. 서브도메인 열거 + JS-발견 URL 확대(별개 대형 increment).
 
@@ -199,7 +199,8 @@ Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP 
 
 ### 📌 AI-DLC 진행 상태 (2026-07-29)
 - ✅ **r7~r17 전부 main 병합 완료**(main `71ceabe`).
-- ✅ **r18(subzy DB #0e) 전 단계 완료** on feat/subzy-db (docs/status-refresh 위) — Operations 도달, PR/병합 대기. 다음: changeme(PS-019) or 발견/서브도메인 스코프.
+- ✅ **r18(subzy DB #0e) 전 단계 완료** on feat/subzy-db — Operations 도달, PR/병합 대기(PR #26).
+- ✅ **r19(changeme/PS-019) 조사 종결** on feat/changeme-wiring — Requirements(제한적 배선 + N/A applicability + well-known B 커버리지) → Workflow Planning → Functional Design(applicable 훅·well-known login 마커) → Code Gen P1(플랜+근거리뷰 F1~F7) → **Code Gen P2 Step 0 조기 스모크에서 STOP&REPORT**(telnetlib py3.13+ 부적합 + ~1GB). 사용자 결정=**stub 유지(정직 바닥)**. **코드 변경 0**(주석만: adapters.go/Dockerfile의 부정확한 "Python2 heritage" → 스모크-검증된 실제 이유로 정정). 다음: 발견/서브도메인 스코프 or Option C(자체 경량 PS-019 체크).
 
 ### 🔴 TOP PRIORITY — Wire the 7 probe CLIs for real (infra-plan §3)
 **chiller judges only 10 of the 26 KISA items today.** No OSS tool has ever been executed as a
