@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"log"
+	"sort"
 	"strings"
 
 	"github.com/hongsam14/chiller/internal/domain"
@@ -42,6 +43,10 @@ func (o *Orchestrator) finalize(ctx context.Context, id domain.ScanID) {
 	cov := rt.Accountant.Account(so)
 
 	rep := rt.ReportBuilder.Build(id, findings, cov, []domain.Framework{fw})
+	// r17 (FR-T4): surface URLs whose body was truncated/undecodable so a body-based
+	// "no finding" on them is not read as authoritative. Set after Build so the Builder
+	// interface stays unchanged (every framework builder gets it for free).
+	rep.TruncatedURLs = truncatedURLs(outcomes)
 	if err := o.cfg.Store.SaveReport(ctx, id, rep); err != nil {
 		o.fail(ctx, id)
 		return
@@ -171,6 +176,25 @@ func (o *Orchestrator) foldOutcomes(id domain.ScanID, ctx context.Context, outco
 		}
 	}
 	return so
+}
+
+// truncatedURLs returns the sorted, de-duplicated URLs whose fetched body was
+// truncated/undecodable (r17, FR-T4). The outcomes already carry the exact URLs
+// (the JS asset's own URL when only the JS was truncated), so no item-ledger read
+// is needed. Empty ⇒ every scanned body was complete.
+func truncatedURLs(outcomes []domain.WorkItemOutcome) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, oc := range outcomes {
+		for _, u := range oc.TruncatedURLs {
+			if u != "" && !seen[u] {
+				seen[u] = true
+				out = append(out, u)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // itemsByID returns each WorkItem id → the item, from the store (the source of

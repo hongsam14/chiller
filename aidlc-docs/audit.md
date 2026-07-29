@@ -1502,3 +1502,61 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: "Operation stage"
 **AI Response**: Build&Test 승인 → Operations(placeholder) 진행. production-readiness.md에 r16 increment log 추가(OSS-증류 시그니처가 PS-009/018/013 dictionary 갭 마감 + FR-6 소유-only가 well-known FP 증폭원 제거, 코드리뷰 7건 6수정/1trade, --signatures fail-closed 부팅·framework 선택·/report 뷰, Build&Test gitleaks 히스토리-스캔 갭 수정). 한계 3b 갱신(dictionary=r16 RESOLVED, 잔존=P0 transport br/zstd+512KB=최상위 갭). aidlc-state Operations 라인 + r16 increment를 CLOSED로 마킹. r16 전 AI-DLC 단계 완료. Operations는 MVP 워크플로에서 placeholder(배포 빌드 없음).
 **Context**: OPERATIONS - r16 Operations 도달, 증분 종료.
+
+## 신규 증분 시작 — P0 transport correctness (r17)
+**Timestamp**: 2026-07-29T01:00:00Z
+**User Input**: "P0 transport increment를 ai-dlc를 통해 작업"
+**AI Response**: AI-DLC 워크플로 진입. Brownfield(기존 코드), aidlc-state 존재 → resume. 대상: internal/scan/fetch — (1) br/zstd/deflate 응답 바디 디코딩(현재 Go 기본 transport는 gzip만; Content-Encoding br/zstd/deflate는 미디코드 → 바디 정규식이 압축 바이트 스캔 → 글로벌 미탐), (2) 512KiB 바디 cap의 silent truncation 기록. Welcome + Workspace Detection + Requirements Analysis 진행, 한글 clarifying questions 제시 예정. 신규 브랜치 feat/transport-correctness off main.
+**Context**: INCEPTION - r17 P0 transport correctness 시작.
+
+## Requirements Analysis — 결정 (r17)
+**Timestamp**: 2026-07-29T01:10:00Z
+**User Input**: [AskUserQuestion 응답] Q1=명시적 디코딩 · Q2=해제 후 512KiB 유지 · Q3=기록+리포트 노출 · Q4=부분 데이터 유지+계속
+**AI Response**: requirements-transport.md 작성. FR-T1(Content-Encoding gzip/deflate/br/zstd 디코딩, Accept-Encoding 명시+transport 자동해제 off) · FR-T2(압축 읽기+해제 출력 각 512KiB bound, bomb 방어) · FR-T3(HAREntry.Truncated 기록) · FR-T4(리포트에 truncated URL 노출) · FR-T5(디코드 실패 부분유지+계속, total). deps: brotli(andybalholm)+zstd(klauspost). 확장: security(bomb)·resiliency(total)·PBT(디코더 round-trip/cap/bomb/malformed) 적용. 단일 유닛 scan(+report 노출 touch). Fetcher 인터페이스 불변(additive HAREntry.Truncated). Requirements 승인 게이트 제시.
+**Context**: INCEPTION - Requirements Analysis 완료 (r17).
+
+## Workflow Planning (r17)
+**Timestamp**: 2026-07-29T01:15:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: execution-plan-transport.md 작성. Risk=Medium. EXECUTE: Functional Design(HAREntry.Truncated 데이터모델 + truncation fetch→outcome→report 전파 + decoder/cap/bomb 시맨틱, NFR-design 흡수) · Code Generation(P1+P2) · Build and Test(게이트 + vuln/SBOM 신규 deps). SKIP: Reverse/Stories/App Design/Units/NFR Req·Design/Infra. 단일 유닛 scan(+report touch). deps: andybalholm/brotli·klauspost/compress. Mermaid flow 검증. Workflow Planning 승인 게이트 제시(사용자 override 가능).
+**Context**: INCEPTION - Workflow Planning 완료 (r17).
+
+## Functional Design (r17)
+**Timestamp**: 2026-07-29T01:25:00Z
+**User Input**: "truncate 전파가 왜 나왔지" → 설명 → "그대로 유지"(Q3=B 리포트 노출 유지)
+**AI Response**: transport-functional-design.md 작성. (1) 데이터모델 additive: HAREntry.Truncated + WorkItemOutcome.Truncated + report.Report.TruncatedURLs. (2) decode.go: decodeBody(src,encoding,max)→(out,truncated) total 함수, codec table(gzip/deflate=zlib→flate/br=andybalholm/zstd=klauspost), bomb 방어=LimitReader(codec,max+1) 스트리밍 출력 bound, 실패시 부분+truncated, unknown encoding→truncated. (3) fetch: Accept-Encoding 명시+DisableCompression, decodeBody로 교체, RespReadLimit=압축읽기 bound. (4) 전파: fetch→exec(out.Truncated=html.Truncated)→finalize(AllItems 맵으로 truncated URL 수집→rep.TruncatedURLs, Build 이후 세팅→Builder 인터페이스 불변). (5) PBT: round-trip/cap/bomb/malformed/identity. Fetcher·WorkItemOutcome·Report additive만, 안전봉투·26파티션 불변. FD 2-옵션 게이트 제시.
+**Context**: CONSTRUCTION - Functional Design 완료 (r17).
+
+## FD 리뷰(근거 대조) + 수정 → Code Gen (r17)
+**Timestamp**: 2026-07-29T01:35:00Z
+**User Input**: "FD 근거 추출→요구사항 대조→리뷰" → "정의 확장으로. FD/requirements 반영하고 Continue to Next Stage"
+**AI Response**: FD 근거-요구사항 대조 리뷰. 지적 3건(검증): F1 RespReadLimit 근거 사실오류(retryablehttp v1.3.20 do.go 확인 — RespReadLimit은 재시도 드레인 전용, 반환 body 미제한 → 스트리밍 출력-bound만 필요, FR-T2 압축cap 삭제) · F2 잘린 DiscoveredJS 미전파(exec.go:73-78 — out.Truncated=html.Truncated만 → JS OR 추가) · F3 unknown-encoding에 Truncated 재사용 의미충돌 → 사용자 결정: **정의 확장**(Truncated="온전한 디코드 텍스트 미확보"). F4 경미: deflate zlib/raw PBT. requirements(FR-T1/2/3/4)+FD(§1 정의·§3 RespReadLimit·§4 JS·§5 deflate) 반영 완료. FD "Continue to Next Stage" → Code Generation Part 1.
+**Context**: CONSTRUCTION - FD 리뷰/수정 완료, Code Gen 진입 (r17).
+
+## Code Generation Part 1 (Planning) (r17)
+**Timestamp**: 2026-07-29T01:40:00Z
+**AI Response**: transport-code-generation-plan.md 작성. A(deps brotli+klauspost/compress) · B(decode.go decodeBody total, codec dispatch, 스트리밍 출력-bound bomb방어) · C(additive HAREntry.Truncated + WorkItemOutcome.Truncated + report.Report.TruncatedURLs) · D(fetch Accept-Encoding+DisableCompression, decodeBody 교체) · E(전파: exec out.Truncated=html||JS, finalize rep.TruncatedURLs, report view 노트) · F(검증: 디코더 PBT round-trip/cap/bomb/malformed, fetch br/zstd 디코드+truncation, 전파 테스트, 게이트+make vuln). Risk Medium. Part 1 승인 게이트 제시.
+**Context**: CONSTRUCTION - Code Generation Part 1 plan (r17).
+
+## Code Generation Part 2 실행 완료 (r17)
+**Timestamp**: 2026-07-29T02:45:00Z
+**AI Response**: 플랜 A~F 구현. A(deps brotli v1.2.2+klauspost/compress v1.19.1) B(decode.go decodeBody total, codec dispatch, 스트리밍 출력-bound bomb방어, deflate zlib→flate 폴백) C(HAREntry.Truncated+WorkItemOutcome.Truncated+report.Report.TruncatedURLs additive) D(fetch Accept-Encoding+DisableCompression는 *http.Transport에만, 커스텀 RoundTripper 보존; decodeBody 교체) E(exec out.Truncated=html‖JS, finalize truncatedURLs 헬퍼, report DTO+UI 노트) F(디코더 PBT/fetch 디코드+truncation/전파 테스트). 게이트 전부 green(gosec 0, secrets no-leaks, drift 0). make vuln: 신규 deps 0취약점, x/text@0.37 GO-2026-5970은 r17무관(main 동일). 리뷰 지적 F1(RespReadLimit)·F2(JS전파, TestRun_Truncated_MainOrJS로 고정)·F3(정의확장)·F4(deflate 2형태 PBT) 반영. retry 테스트 회귀(커스텀 RoundTripper 클로버) 발견·수정. Code Gen Part 2 완료 게이트 제시.
+**Context**: CONSTRUCTION - Code Generation Part 2 완료 (r17).
+
+## 코드 리뷰(/code-review high) + 수정 (r17)
+**Timestamp**: 2026-07-29T03:30:00Z
+**User Input**: "/code-review"
+**AI Response**: 워크플로 리뷰 19에이전트 → 10확정(1 반박). 심각: F1 Mongo sealedOutcome이 Truncated 누락 → 프로덕션에서 FR-T4 무-op(in-memory 테스트만 통과) · F6 transport를 매 NewFetcher마다 clone/replace(풀 재사용 상실+공유 client race) · F3 deflate zlib→flate 폴백이 valid-truncated zlib을 garbage로 · F4 deflate가 압축입력을 출력cap으로 bound · F2 body-read 에러를 failed→ran-truncated로 재분류 · F5 잘린 JS가 페이지 URL로 보고. 수정 8건: (F1/F5/F10) WorkItemOutcome.Truncated bool→TruncatedURLs []string(exec가 정확 URL 수집, finalize가 union·item 재조회 제거, Mongo seal/open에 필드 추가) · (F6/F8) transport mutation 제거—Accept-Encoding 헤더만으로 Go auto-decode 차단(proxy-only로 복원) · (F2) decodeBody가 err 반환, identity 경로 read 에러 전파→fetch 실패 · (F3/F4) decodeDeflate 2바이트 헤더 peek+스트리밍(output-bound, 코덱 정확) · (F7) exec nil-guard. F8 no_change_needed(실 transport는 Accept-Encoding으로 정확, 커스텀 RoundTripper 오작동은 계약 밖) · F9 skipped(latent, 소비자 없음, 후속). 회귀 테스트 추가(IdentityReadError/DeflateTruncatedZlib/NilFetch/Truncated_MainOrJS는 JS URL 단언). 게이트 재검 green(gofmt·vet·gosec 0·race·전체 테스트). golden 철칙 위반 없음.
+**Context**: CONSTRUCTION - Code review findings fixed (r17), Code Gen Part 2 재검증.
+
+## Build and Test 실행 (r17)
+**Timestamp**: 2026-07-29T03:35:00Z
+**User Input**: "커밋부터 하고 build and test"
+**AI Response**: r17 커밋 2개(f332503 코드·baac256 docs) 후 Build&Test. 전 게이트 fresh green: build·vet(+integration)·gofmt·arch-check·race(23pkg 0FAIL)·gosec 0·make secrets(no leaks)·signatures-check(drift 0). make vuln: 신규 deps(brotli·klauspost) 0취약점, 기존 x/text@0.37 GO-2026-5970(v0.39 fixed)는 r17 무관·non-blocking. 요약 transport-build-and-test-summary.md 작성(리뷰 10건 8수정 포함). Operations 진행 승인 게이트 제시.
+**Context**: CONSTRUCTION - Build and Test 완료 (r17).
+
+## Operations 단계 도달 (r17)
+**Timestamp**: 2026-07-29T03:50:00Z
+**User Input**: "Operation stage"
+**AI Response**: Build&Test 승인 → Operations(placeholder). production-readiness.md에 r17 increment log 추가(Content-Encoding 디코딩+truncation 노출, 리뷰 10건 8수정, 최심각 F1 Mongo seal·F6 transport clone 사전차단). 한계 3b (r16+r17)로 전면 RESOLVED 마킹. aidlc-state Operations 라인 + r17 CLOSED increment 기록. r17 전 AI-DLC 단계 완료. Operations는 MVP placeholder.
+**Context**: OPERATIONS - r17 Operations 도달, 증분 종료.

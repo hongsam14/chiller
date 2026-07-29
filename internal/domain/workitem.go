@@ -35,4 +35,9 @@ type WorkItemOutcome struct {
 	Findings      []Finding           `bson:"findings"`
 	Failed        []CheckerID         `bson:"failed"`
 	NotApplicable map[CheckerID][]CWE `bson:"notApplicable"`
+	// TruncatedURLs lists the exact URLs whose fetched body (the main response or a
+	// discovered first-party JS asset) was not fully available as decoded text (r17,
+	// FR-T4). It rides the ledger so finalize can surface the affected URLs in the
+	// report — the JS asset's own URL, not the page's, when only the JS was truncated.
+	TruncatedURLs []string `bson:"truncatedUrls,omitempty"`
 }

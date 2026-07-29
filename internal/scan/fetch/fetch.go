@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -103,6 +102,15 @@ func NewFetcher(gate safety.ApprovalGate, lim safety.RateLimiter, cache Response
 	for _, opt := range opts {
 		opt(f)
 	}
+	// We decode gzip/deflate/br/zstd ourselves (r17, FR-T1). Go's transport
+	// auto-decompresses ONLY gzip AND only when it implicitly added the
+	// `Accept-Encoding: gzip` header itself — so setting our own Accept-Encoding on
+	// every request (in Fetch) already stops Go from auto-decoding, leaving the raw
+	// Content-Encoding for decodeBody. That means we do NOT need to touch the shared
+	// client's transport for compression, so the transport is left alone except for
+	// the financial-mode proxy (unchanged from before r17) — avoiding a per-scan
+	// transport clone that would drop cross-scan connection-pool reuse and race on the
+	// shared client.
 	if f.proxyURL != "" {
 		if pu, err := url.Parse(f.proxyURL); err == nil {
 			tr, ok := client.Transport.(*http.Transport)
@@ -189,17 +197,25 @@ func (f *fetcher) Fetch(ctx context.Context, scanID domain.ScanID, t domain.Targ
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
 	}
+	// Advertise the encodings we can decode; the transport's DisableCompression stops
+	// Go from adding its own gzip and auto-decoding, so every encoding is decoded by us.
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	resp, err := f.rc.Do(req) // bounded transient-error retries + backoff
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s: %w", t.URL, err)
 	}
 	defer func() { _ = resp.Body.Close() }() // response body: a failed close cannot lose data
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, f.maxBody))
+	// Decode the body by Content-Encoding (gzip/deflate/br/zstd), bounded to maxBody
+	// on the OUTPUT (decompression-bomb safe, r17). A malformed/oversized/undecodable
+	// body is marked truncated rather than failing the fetch (FR-T5). A genuine
+	// transport read error on the uncompressed path is still returned as a fetch
+	// failure (→ tool-failed), preserving the honesty contract.
+	body, truncated, err := decodeBody(resp.Body, resp.Header.Get("Content-Encoding"), f.maxBody)
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s read: %w", t.URL, err)
 	}
-	e := toHAR(t, resp, body)
+	e := toHAR(t, resp, body, truncated)
 	// Do not cache a response for a scan that is already over. StopScan cancels the
 	// scan context and then wipes the cache, but a fetch already past its ctx checks
 	// keeps running to completion — and a Put here would land AFTER the wipe,
@@ -216,7 +232,7 @@ func (f *fetcher) Fetch(ctx context.Context, scanID domain.ScanID, t domain.Targ
 	return e, nil
 }
 
-func toHAR(t domain.Target, resp *http.Response, body []byte) *domain.HAREntry {
+func toHAR(t domain.Target, resp *http.Response, body []byte, truncated bool) *domain.HAREntry {
 	headers := make([]domain.Header, 0, len(resp.Header))
 	for name, vals := range resp.Header {
 		for _, v := range vals {
@@ -240,6 +256,7 @@ func toHAR(t domain.Target, resp *http.Response, body []byte) *domain.HAREntry {
 		Headers:   headers,
 		Cookies:   cookies,
 		Body:      body,
+		Truncated: truncated,
 		FetchedAt: domain.Timestamp(time.Now().UnixMilli()),
 	}
 }

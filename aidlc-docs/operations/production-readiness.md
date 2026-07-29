@@ -5,6 +5,34 @@
 
 The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Below is what MUST happen before the durable backends run in production, and the honest limitations carried forward.
 
+## Increment log — P0 Transport Correctness (r17, 2026-07-29)
+
+> **CLOSED (green, Build & Test approved 2026-07-29).** Closes the top detection-correctness gap
+> carried since r10/r16: response bodies are now **decoded by Content-Encoding** (gzip/deflate/br/zstd)
+> before any checker sees them, and the 512 KiB truncation is **surfaced in the report** instead of
+> read as a clean scan.
+>
+> - **The silent global false-negative is fixed.** Go's transport auto-decompresses only gzip (and only
+>   when it implicitly asked); a `br` (Cloudflare default) / `zstd` / `deflate` response used to reach the
+>   body signatures compressed, matching nothing. `internal/scan/fetch/decode.go` now streams the body
+>   through the codec, **bounded on the output at 512 KiB** so a decompression bomb cannot exhaust memory.
+> - **Truncation is honest.** `HAREntry.Truncated` + `WorkItemOutcome.TruncatedURLs` (the exact URLs,
+>   incl. a truncated JS asset's own URL) ride the ledger; the `/report` view warns "partially scanned —
+>   body truncated" so a truncated page is never read as an authoritative clean scan. A genuine transport
+>   read error still fails the fetch (→ tool-failed), preserving the honesty contract.
+>
+> **A workflow code review (high, 10 findings) followed; 8 fixed, 1 no-change-needed, 1 skipped.** The two
+> most severe were caught pre-merge: the Mongo ledger seal/open dropped the truncation field (the whole
+> feature would have silently no-op'd in production Infra), and the transport was cloned per-scan (losing
+> connection-pool reuse + a shared-client race). See `construction/build-and-test/transport-build-and-test-summary.md`.
+>
+> **New deps** (pinned): `andybalholm/brotli`, `klauspost/compress`. `make vuln`: 0 new vulns.
+>
+> **Carried forward (honest):** indirect `golang.org/x/text@v0.37.0` GO-2026-5970 (fix at v0.39.0+, a
+> separate dep bump, not r17 scope); review F9 — the decoded HAR retains the compressed `Content-Encoding`/
+> `Content-Length` headers (latent, no current consumer). **The r10/r16-carried "P0 transport correctness"
+> limitation is now RESOLVED** — see limitation 3b below.
+
 ## Increment log — Observation 오탐 저감: OSS-distilled signatures + FR-6 (r16, 2026-07-29)
 
 > **CLOSED (green, Build & Test approved 2026-07-29).** Replaced the hand-rolled observation dictionaries
@@ -104,12 +132,11 @@ The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Belo
 1. ~~Split-topology mid-run recovery is not automatic.~~ **RESOLVED 2026-07-11 (ledger-lease increment).** Items carry a lease (owner + expiry, heartbeat-refreshed); a lease-safe periodic sweep (manager + all, `ReclaimExpired`) reclaims only expired-lease inflight items, so a dead worker's items are recovered mid-run without clobbering a live worker's. The dashboard scan list (`/api/introspect/scans`) is also live. Safe-reclaim invariant (at most one recorded outcome per item) proven by a stateful PBT. See `construction/platform/code/lease-business-logic-summary.md`.
 2. ~~Probe adapters are stubs (`argv` nil).~~ **RESOLVED 6/7 2026-07-14 (increment r7).** Six probes wired (argv + JSON parser + bundled binary + process-group kill); changeme (PS-019) deferred (F5). Remaining: the in-image `probe-integration` job must run once on Docker to validate the hand-authored parser schemas against real output (#0a) and confirm the tool version pins (#0b). See `construction/scan/code/probe-business-logic-summary.md`.
 3. **Not in this increment** (infra-plan #3–#6): ProgressReporter→OTel, Authorizer→OIDC/mTLS, ResponseCache→Valkey, FindingsStore→Mongo. The shared-instance placement for #5/#6 is pre-decided in `construction/shared-infrastructure.md`.
-3b. **Observation transport correctness (r16 carried, honest):** ~~(a) PS-009/018/023 dictionaries are
+3b. **Observation transport correctness — ✅ RESOLVED (r16 + r17):** ~~(a) PS-009/018/023 dictionaries are
    shallow~~ **RESOLVED r16** — signatures are now OSS-distilled (gitleaks/ZAP/nuclei, `configs/signatures/`).
-   **(b) `br`/`zstd`/`deflate` response bodies are still not decoded and bodies are capped at 512KB** (P0,
-   C3=A) — on a transport path that advertises those encodings every body regex matches nothing (a silent
-   global false-negative), which can nullify even a wired check. **This is now the top detection correctness
-   gap.** Fix before relying on passive body signatures behind a `br`/`zstd`-emitting proxy.
+   ~~(b) `br`/`zstd`/`deflate` bodies undecoded + 512KB truncation silent~~ **RESOLVED r17** — bodies are
+   decoded by Content-Encoding (output-bounded, bomb-safe) and truncation is surfaced in the report
+   (`fetch/decode.go`, `Report.TruncatedURLs`). The former top detection-correctness gap is closed.
 4. **Browser transport hardening** (infra-plan §2): Chromium provisioning, HTTPS CONNECT + MITM CA, session auto-refresh.
 
 ## Suggested next tasks (pick one)
