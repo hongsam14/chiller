@@ -165,15 +165,29 @@ func (s sensitiveCommentSig) scan(b []byte) (what, data string) {
 		if !hasAnyKeyword(lower, rule.Keywords) {
 			continue // gitleaks keyword pre-filter (also a big perf win over 200+ regexes)
 		}
-		loc := rule.Re.FindIndex(b)
+		loc := rule.Re.FindSubmatchIndex(b)
 		if loc == nil {
 			continue
 		}
-		m := b[loc[0]:loc[1]]
-		if rule.MinEntropy > 0 && shannon(string(m)) < rule.MinEntropy {
+		m := b[loc[0]:loc[1]] // whole match (keyword=…value context) — used for evidence
+		// The secret is the capture group when the rule defines one, else the whole
+		// match. gitleaks gates entropy AND its allowlist on the SECRET, not the
+		// surrounding `key = …` context; applying them to the whole match instead
+		// (the old bug) let an unquoted variable reference such as
+		// `apiKey = Foo.apiKey` slip past generic-api-key's own `^[a-zA-Z_.-]+$`
+		// allow — because that allow anchors on the value, which never matched while
+		// we tested it against a string still carrying `=` and spaces.
+		secret := m
+		if len(loc) >= 4 && loc[2] >= 0 {
+			secret = b[loc[2]:loc[3]]
+		}
+		if rule.MinEntropy > 0 && shannon(string(secret)) < rule.MinEntropy {
 			continue // low-entropy → minified-JS literal / ordinary word, not a secret
 		}
-		if allowed(m, rule.Allow) {
+		// Allow against the secret (gitleaks' default target) AND the whole match, so
+		// value-anchored allows (`^[a-zA-Z_.-]+$`) and the few match/line-anchored ones
+		// (import …, LICENSE=…, --mount=type=secret) both keep excusing their cases.
+		if allowed(secret, rule.Allow) || allowed(m, rule.Allow) {
 			continue
 		}
 		start := loc[0] - 24
