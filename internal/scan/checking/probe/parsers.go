@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -114,8 +116,59 @@ func hasVersion(s string) bool {
 
 // ---- subzy (Host, PS-025 · NoCanonicalCWE subdomain takeover) ----
 // subzy writes JSON to --output <FILE> (not stdout); stdout carries banner text.
+// subzy v1.1.0 has NO fingerprint-path flag (verified against `subzy run --help`): it
+// loads its takeover-fingerprint DB from `$HOME/subzy/fingerprints.json` and, if that
+// file is absent, self-fetches it from a dead URL → parse error → tool-failed (#0e).
+// So the operator mounts the DB read-only at $SUBZY_DB and the adapter runs subzy with
+// HOME set so subzy reads that file instead of fetching (see subzyRunEnv).
 func subzyOutArg(t domain.Target, outPath string) []string {
 	return []string{"run", "--target", t.Host, "--output", outPath, "--hide_fails"}
+}
+
+// subzyDBPath is the operator-facing mount path for the DB file: the SUBZY_DB env or the
+// default. It MUST be `<dir>/subzy/fingerprints.json` (the default is), because subzy
+// v1.1.0 has no fingerprint flag and always reads `$HOME/subzy/fingerprints.json`.
+func subzyDBPath() string {
+	if p := os.Getenv("SUBZY_DB"); p != "" {
+		return p
+	}
+	return "/opt/subzy/fingerprints.json"
+}
+
+// subzyHome is the HOME we run subzy under, and subzyReadFile is the EXACT file subzy
+// then opens (`$HOME/subzy/fingerprints.json`). The guard checks subzyReadFile — not the
+// literal SUBZY_DB — so the guard and subzy can never disagree: a non-conforming SUBZY_DB
+// makes both point at the same (absent) derived path, failing honestly rather than
+// passing the guard while subzy reads elsewhere.
+func subzyHome() string     { return filepath.Dir(filepath.Dir(subzyDBPath())) }
+func subzyReadFile() string { return filepath.Join(subzyHome(), "subzy", "fingerprints.json") }
+
+// subzyRunEnv sets HOME so subzy reads the provisioned DB (subzyReadFile) instead of
+// self-fetching — one fewer runtime outbound.
+func subzyRunEnv() []string { return []string{"HOME=" + subzyHome()} }
+
+// subzyDBGuard is subzy's precheck (#0e): it fails the adapter (→ tool-failed) unless the
+// DB subzy WILL read is a present, non-empty fingerprint array — WITHOUT running subzy.
+// Honesty must not depend on subzy's behavior: a run with zero fingerprints matches
+// nothing and would report every subdomain clean (a false-clean), so we refuse to run.
+func subzyDBGuard(domain.ScanContext) error {
+	p := subzyReadFile()
+	fi, err := os.Stat(p)
+	if err != nil {
+		return fmt.Errorf("subzy: fingerprint DB not provisioned at %s (run `make subzy-db` + mount it): %w", p, err)
+	}
+	if fi.IsDir() {
+		return fmt.Errorf("subzy: fingerprint DB path %s is a directory (missing mount / run `make subzy-db`)", p)
+	}
+	b, err := os.ReadFile(p) // #nosec G304 -- operator-provisioned config path, same trust boundary as configs/
+	if err != nil {
+		return fmt.Errorf("subzy: cannot read fingerprint DB %s: %w", p, err)
+	}
+	var fps []json.RawMessage
+	if json.Unmarshal(b, &fps) != nil || len(fps) == 0 {
+		return fmt.Errorf("subzy: fingerprint DB %s is not a non-empty JSON array (empty/malformed → would false-clean)", p)
+	}
+	return nil
 }
 
 // Real subzy v1.1.0 --output schema (verified against a body-matched takeover):

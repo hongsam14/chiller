@@ -96,6 +96,11 @@ func TestIntegration_HostProbes_RealExecAndParse(t *testing.T) {
 			if !binaryOnPath(a.ToolName()) {
 				t.Skipf("%s not installed in this image — skipping", a.ToolName())
 			}
+			// subzy needs its operator-provisioned fingerprint DB (#0e); without it the
+			// precheck legitimately tool-fails, so skip rather than misreport an error.
+			if a.ToolName() == "subzy" && subzyDBGuard(domain.ScanContext{}) != nil {
+				t.Skip("subzy fingerprint DB not provisioned (set SUBZY_DB / run `make subzy-db`) — skipping")
+			}
 			if _, err := a.Check(domain.ScanContext{Target: target}); err != nil {
 				t.Errorf("%s: real exec+parse errored (schema drift or unreachable target): %v", a.ToolName(), err)
 			}

@@ -88,7 +88,10 @@ func Dirhunt() Adapter {
 	return r
 }
 func Subzy() Adapter {
-	return newWiredFile("probe:subzy", "subzy", domain.HostScoped, subzyOutArg, subzyParse, cwesSubzy...)
+	r := newWiredFile("probe:subzy", "subzy", domain.HostScoped, subzyOutArg, subzyParse, cwesSubzy...)
+	r.precheck = subzyDBGuard // #0e: fail-fast tool-failed if the DB is absent/empty (never false-clean)
+	r.extraEnv = subzyRunEnv  // #0e: HOME→ subzy reads the mounted DB instead of self-fetching
+	return r
 }
 
 // Default returns all 7 probe adapters.
