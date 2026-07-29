@@ -50,9 +50,21 @@ spec:
             # disk emptyDir). Cleared on pod termination; holds no captured bodies
             # beyond a run (FR-12 stays with ResponseCache.WipeScan).
             - { name: scratch, mountPath: /scratch }
+            # subzy's takeover-fingerprint DB (#0e), read-only, at /opt/subzy (matches
+            # SUBZY_DB; the adapter runs subzy with HOME=/opt so it reads
+            # /opt/subzy/fingerprints.json). Provision the ConfigMap out-of-band:
+            #   make subzy-db && kubectl create configmap subzy-db \
+            #     --from-file=fingerprints.json=deploy/subzy/fingerprints.json
+            # Without it, subzy self-fetches, fails, and PS-025 is honestly tool-failed.
+            - { name: subzy-db, mountPath: /opt/subzy, readOnly: true }
       volumes:
         - name: scratch
           emptyDir: {}
+        - name: subzy-db
+          # optional: a missing ConfigMap must NOT stall the pod (which would take ALL
+          # probes down). Absent → the mount is empty → subzyDBGuard fails → PS-025 is
+          # honestly tool-failed while every other probe keeps running (#0e).
+          configMap: { name: subzy-db, optional: true }
 ---
 # HPA on queue depth. The CPU trigger below is a portable placeholder; the
 # production trigger is a KEDA ScaledObject on the Valkey stream length (XLEN of

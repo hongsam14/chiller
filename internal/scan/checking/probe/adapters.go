@@ -54,9 +54,8 @@ func newWiredFile(id domain.CheckerID, tool string, scope domain.ScopeKind,
 }
 
 // The 7 probe adapters (r5 composition). URL-scoped: humble, httpx, Corsy,
-// changeme. Host-scoped: testssl, dirhunt, subzy. Six are wired this increment;
-// changeme stays unwired (Python2 heritage + active credential-testing +
-// uncertain JSON schema — wired in a later increment, infra-plan §3).
+// changeme. Host-scoped: testssl, dirhunt, subzy. Six are wired; changeme stays
+// unwired — its PS-019 items are honestly tool-failed (see Changeme below).
 func Humble() Adapter {
 	return newWiredFile("probe:humble", "humble", domain.URLScoped, humbleOutArg, humbleParse, cwesHumble...)
 }
@@ -67,9 +66,23 @@ func Corsy() Adapter {
 	return newWiredFile("probe:corsy", "corsy", domain.URLScoped, corsyOutArg, corsyParse, cwesCORS...)
 }
 
-// Changeme is deliberately NOT wired this increment (F5): its items (PS-019)
-// are honestly reported tool-failed until the Python2/schema questions are
-// resolved. Keeping it on newStub also keeps the honesty seam exercised.
+// Changeme (ztgrace/changeme) is deliberately NOT wired: its PS-019 items are
+// honestly reported tool-failed. An r19 Docker smoke of v1.2.3 (the accurate
+// reason, superseding the earlier "Python2 heritage" note — the source is in
+// fact Python3) found it a poor fit for the hardened-minimal image:
+//   - it eager-imports every protocol scanner, incl. telnet → `telnetlib`, which
+//     PEP 594 REMOVED in Python 3.13+; on the python:3.14 base it will not import
+//     without a stdlib shim or pinning the runtime back to Python ≤3.12;
+//   - its deps (paramiko/pysnmp/DB drivers/selenium+phantomjs/shodan, all
+//     eager-imported) add ~1 GB and a large attack surface — at odds with
+//     SECURITY-09 (minimal image) and the non-root/read-only-rootfs hardening.
+//
+// The tool IS functionally bound-able (--protocols http default, --name to narrow
+// creds, --fingerprint as an applicability oracle, JSON {"results":[…]} output,
+// creds baked in-repo), so the block is packaging fit, not capability. Revisit if
+// upstream drops the telnet eager-import and slims deps, or via a purpose-built
+// minimal HTTP default-cred check. Keeping it on newStub keeps the honesty seam
+// exercised (PS-019 stays an honest tool-failed, never a fabricated clean).
 func Changeme() Adapter { return newStub("probe:changeme", "changeme", domain.URLScoped, cwesDefCr...) }
 
 // Testssl inspects the target's own TLS handshake, so it must reach the origin
@@ -88,7 +101,10 @@ func Dirhunt() Adapter {
 	return r
 }
 func Subzy() Adapter {
-	return newWiredFile("probe:subzy", "subzy", domain.HostScoped, subzyOutArg, subzyParse, cwesSubzy...)
+	r := newWiredFile("probe:subzy", "subzy", domain.HostScoped, subzyOutArg, subzyParse, cwesSubzy...)
+	r.precheck = subzyDBGuard // #0e: fail-fast tool-failed if the DB is absent/empty (never false-clean)
+	r.extraEnv = subzyRunEnv  // #0e: HOME→ subzy reads the mounted DB instead of self-fetching
+	return r
 }
 
 // Default returns all 7 probe adapters.

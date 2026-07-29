@@ -202,20 +202,20 @@ jobs:
       - name: stand up the vuln-target fixture
         run: docker compose -f test/fixtures/vuln-target/docker-compose.yml up -d --wait
 
-      - name: fetch subzy fingerprints DB (subzy self-fetch URL is dead)
-        run: |
-          curl -fsSL -o /tmp/fingerprints.json \
-            https://raw.githubusercontent.com/EdOverflow/can-i-take-over-xyz/master/fingerprints.json
+      - name: provision subzy fingerprints DB (#0e — pinned; subzy's self-fetch URL is dead)
+        run: make subzy-db   # → deploy/subzy/fingerprints.json (pinned by SUBZY_DB_COMMIT)
 
       - name: prove positive findings in-image on the fixture network
         # Join the fixture's vulnnet (reaches vulnweb/takeover-mock by name) — it
-        # also has egress, so testssl can reach badssl. Mount the fingerprints DB
-        # at subzy's HOME path. --init reaps probe subprocesses (PID 1).
+        # also has egress, so testssl can reach badssl. Mount the fingerprints DB at
+        # /opt/subzy (SUBZY_DB); the subzy adapter runs subzy with HOME=/opt so it
+        # reads /opt/subzy/fingerprints.json instead of self-fetching. --init reaps
+        # probe subprocesses (PID 1).
         run: |
           docker run --rm --init --network chiller-vuln-target_vulnnet \
             --entrypoint /probe.test \
             -v /tmp/probe.test:/probe.test:ro \
-            -v /tmp/fingerprints.json:/scratch/subzy/fingerprints.json:ro \
+            -v "$PWD/deploy/subzy/fingerprints.json:/opt/subzy/fingerprints.json:ro" \
             -e PROBE_FIXTURE_DIRHUNT=vulnweb \
             -e PROBE_FIXTURE_SUBZY=takeover-mock \
             -e PROBE_BADSSL_HOST=rc4.badssl.com \

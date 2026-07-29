@@ -67,6 +67,14 @@ type runner struct {
 	// ConfigureProxy; DirectOnly adapters (testssl) keep it empty (PR-12c/d).
 	proxyEnv []string
 	exec     func(ctx context.Context, name string, env []string, args ...string) ([]byte, error)
+	// precheck (optional) runs before the tool and, if it errors, fails the adapter
+	// (→ tool-failed) WITHOUT executing the tool. subzy uses it to guarantee honesty
+	// on a missing/empty fingerprint DB (#0e) instead of trusting the tool to error
+	// rather than silently report every subdomain clean.
+	precheck func(ctx domain.ScanContext) error
+	// extraEnv (optional) contributes adapter-fixed subprocess environment, merged
+	// with proxyEnv. subzy sets HOME so it reads the mounted fingerprint DB (#0e).
+	extraEnv func() []string
 }
 
 func (r *runner) ID() domain.CheckerID            { return r.id }
@@ -82,6 +90,11 @@ func (r *runner) Check(ctx domain.ScanContext) (domain.CheckResult, error) {
 		// Not wired: nothing executed, so there is no verdict. Fail loudly →
 		// StatusToolFailed, never StatusChecked (see package doc).
 		return domain.CheckResult{}, fmt.Errorf("%s: %w", r.tool, ErrNotWired)
+	}
+	if r.precheck != nil {
+		if err := r.precheck(ctx); err != nil {
+			return domain.CheckResult{}, err // precondition unmet → tool-failed, not clean
+		}
 	}
 	timeout := r.timeout
 	if timeout == 0 {
@@ -113,7 +126,11 @@ func (r *runner) Check(ctx domain.ScanContext) (domain.CheckResult, error) {
 	if run == nil {
 		run = defaultExec
 	}
-	out, err := run(cctx, r.tool, r.proxyEnv, args...)
+	env := r.proxyEnv
+	if r.extraEnv != nil {
+		env = append(append([]string{}, r.proxyEnv...), r.extraEnv()...)
+	}
+	out, err := run(cctx, r.tool, env, args...)
 	if err != nil {
 		return domain.CheckResult{}, err // tool-failed for this adapter's items
 	}

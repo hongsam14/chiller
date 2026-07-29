@@ -1,0 +1,7 @@
+# Keep the Docker build context to what the build needs. In particular, the
+# operator-provisioned subzy DB (deploy/subzy/, #0e) must NEVER enter the build
+# context — it is mounted read-only at runtime, not baked into the image.
+deploy/
+aidlc-docs/
+.git/
+.github/

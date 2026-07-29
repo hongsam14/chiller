@@ -52,8 +52,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Python probes. dirhunt is on PyPI (isolated venv via pipx, IQ2=A). humble
 # (rfc-st/humble) and Corsy (s0md3v/Corsy) have NO PyPI release — they are git
-# scripts, cloned + wrapped on PATH. changeme is NOT bundled this increment
-# (F5 — Python2 heritage; its PS-019 stays honestly tool-failed).
+# scripts, cloned + wrapped on PATH. changeme is intentionally NOT bundled: an
+# r19 smoke of ztgrace/changeme v1.2.3 found it unfit for this hardened-minimal
+# image — it eager-imports `telnetlib` (PEP-594-removed in Python 3.13+, so it
+# won't import on this 3.14 base without a stdlib shim), and its deps
+# (paramiko/selenium/DB drivers/…) add ~1 GB + a large attack surface. PS-019
+# stays honestly tool-failed; see probe/adapters.go Changeme for the full note.
 # Pin humble/Corsy to a commit at first real build (#0b); default branch until then.
 ENV PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PATH=/usr/local/bin:$PATH
 RUN pipx install "dirhunt==0.9.0"
@@ -86,6 +90,13 @@ RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app \
 # (subzy downloads its fingerprints DB there on first run) work under a
 # read-only root FS, where /home/app would not be writable (#0c).
 ENV TMPDIR=/scratch HOME=/scratch
+# subzy (PS-025) has no fingerprint-path flag; it reads $HOME/subzy/fingerprints.json
+# (#0e). SUBZY_DB names where the operator MOUNTS the DB read-only; the subzy adapter
+# runs the tool with HOME set so that path resolves (default HOME=/opt). The image
+# bakes NO DB — it is subzy's own operational data, provisioned with `make subzy-db`.
+# Without the mount, subzy self-fetches, fails, and PS-025 is honestly tool-failed
+# (never false-clean — the adapter guards on the file being present + non-empty).
+ENV SUBZY_DB=/opt/subzy/fingerprints.json
 USER app
 
 EXPOSE 8080
