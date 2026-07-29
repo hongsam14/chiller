@@ -1560,3 +1560,8 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: "Operation stage"
 **AI Response**: Build&Test 승인 → Operations(placeholder). production-readiness.md에 r17 increment log 추가(Content-Encoding 디코딩+truncation 노출, 리뷰 10건 8수정, 최심각 F1 Mongo seal·F6 transport clone 사전차단). 한계 3b (r16+r17)로 전면 RESOLVED 마킹. aidlc-state Operations 라인 + r17 CLOSED increment 기록. r17 전 AI-DLC 단계 완료. Operations는 MVP placeholder.
 **Context**: OPERATIONS - r17 Operations 도달, 증분 종료.
+
+## 프로젝트 구현상태 체크 & aidlc-state 최신화 (2026-07-29)
+**User Input**: "ai-dlc를 사용해서 현재까지 프로젝트가 어디까지 구현되었는지, 앞으로의 todo가 뭔지 체크 & 업데이트"
+**AI Response**: main(#25 병합, 71ceabe) 실측 + coverage spec(26항목=13 observation·9 probe·4 delegated) 대조. aidlc-state 최신화: (1) 스테일한 "Current Stage"+2026-07-13 Reality check 교체 → "Implementation status (2026-07-29)"(probes 6/7 배선·observation 13항목 well-known+OSS증류+FR-6·transport r17·reporting/FSEC; 3개 옛 갭 전부 RESOLVED). (2) Backlog "r16 도출 TODO"→"Forward TODO (r17 종료)": 남은 검출갭(changeme PS-019·subzy DB #0e·발견/서브도메인 스코프=최대갭) + 소규모 후속(severity.yaml·Stop/Resume 라우트·x/text 범프·r17 F9) + 대형(§2 financial·§4 Playwright·§5 OTel/OIDC). AI-DLC 진행: r7~r17 전부 병합, 열린 PR 없음.
+**Context**: STATUS - 구현상태 실측 + aidlc-state 최신화.

@@ -5,13 +5,22 @@
 - **Repo**: Service-Passive-Scanner · **Module**: `github.com/enki-offen/chiller`
 - **Project Type**: Greenfield (new build), informed by a brownfield reference (`coolant`)
 - **Start Date**: 2026-07-08
-- **Current Stage**: ✅ All 4 units complete + Build and Test green + Operations (placeholder) reached (2026-07-10). Post-MVP: scan Fetcher retryablehttp resilience DONE. Active follow-ups tracked in Backlog.
-- ⚠️ **Reality check (2026-07-13)**: "code complete" ≠ "scans 26 items". Two payload-delivery gaps sit under the green build:
-  - **12 probe-owned items**: report `tool-failed` (no verdict) — no OSS probe binary has ever been executed. See Backlog → TOP PRIORITY.
-  - **6 observation items** (PS-008/010/011/012/013/022): signature logic is real but never receives its well-known artifact; 4 report false-clean. See Backlog → HIGH. The remaining 4 items are delegated by design.
-  - **Signature detection quality** (all 10 regexes, adversarial review 2026-07-13, verified against RE2): even the wired checks under-detect (shallow dictionaries: `.env` 4 keys, secrets ~7 patterns, backup ~7 exts) and some over-fire (`.env` doc FP, legit-archive FP at High, bare `sid` FP). Two transport blind spots (`br`/`zstd` bodies undecoded → global FN; 512KB truncation) can nullify even PS-003/009/018. No ReDoS (RE2). See Backlog → Signature detection quality.
-  - **Effective real coverage today ≈ 4 observation items** (PS-003/009/018/023) fully wired — and those under-detect per the signature review; the rest are owner-present but payload-starved.
+- **Current Stage**: ✅ MVP (4 units + Build&Test + Operations) **plus 7 post-MVP increments (r7→r17), all merged to main** (main tip `71ceabe`). The detection engine is now substantively wired — see **Implementation status** below. Active follow-ups in Backlog.
 - **Driving Plan**: `aidlc-docs/inception/requirements/reference/augmentation_plan.html` — KISA 컴플라이언스 26개 항목 passive-scanner 엔진
+
+## Implementation status (2026-07-29) — where the project actually stands
+
+**26-item partition:** 13 judged by the **observation** engine · 9 by **probe** CLIs · 4 **delegated** by design (PS-005/006/026→Nuclei, PS-014→ASM). Honest current coverage ≈ **judges all but `changeme`(PS-019)**, with `subzy`(PS-025) needing its DB at runtime.
+
+**Detection — DONE:**
+- ✅ **Probe CLIs (r7/r8/r9)** — 6/7 wired + Docker-verified with real binaries & positive findings: humble(PS-001/…), httpx(PS-007/020), testssl(PS-002), dirhunt(PS-004), corsy(PS-021), subzy(PS-025). `changeme`(PS-019) stays a stub → honest `tool-failed`.
+- ✅ **Observation (13 items)** — well-known-path GET provider delivers each artifact (r10); signatures **OSS-distilled** from gitleaks/ZAP/nuclei (r16, `configs/signatures/`); **FR-6** runs only the owning signature on a well-known sweep (kills the FP amplifier).
+- ✅ **Transport correctness (r17)** — `br`/`zstd`/`deflate` bodies decoded (output-bounded, bomb-safe); body truncation surfaced in the report. Closes the former top correctness gap.
+- ✅ **Reporting** — customer compliance report view `/report` + FSEC framework + per-request framework selection (#24); finding drill-down.
+
+**The three 2026-07-13 "reality check" gaps are RESOLVED:** ~~12 probe items tool-failed~~ (r7/r8) · ~~6 observation items false-clean~~ (r10) · ~~shallow dictionaries + `br`/`zstd`/512KB transport blind spots~~ (r16 + r17).
+
+**Remaining detection gaps (see Backlog → r16/r17 도출 TODO):** `changeme`(PS-019) unwired · `subzy`(PS-025) fingerprints DB provisioning (#0e) · discovery/subdomain scope (largest gap vs human DAST).
 
 ## Mission (from the plan)
 Build a dedicated **passive-scanner engine** covering **KISA compliance 26 items (PS-001…PS-026)** —
@@ -160,19 +169,33 @@ Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP 
 3. ✅ **Observation well-known-path GETs** — r10에서 배선(6 항목 아티팩트 전달). (아래 HIGH 섹션은 이력)
 4. ✅ **Signature dictionary/value fidelity** — r16에서 OSS 증류로 대폭 해소(PS-009 토큰·PS-011 키·PS-012 backup-name·PS-018 sid·PS-013 admin/api-docs·Gap B 내부 disclosure). (§ Signature quality → P1은 이력; 잔존은 아래 r16 TODO)
 
-### 📌 r16 도출 TODO (2026-07-28, Observation 오탐 저감 종료 시점)
-검출은 이제 정직하되 커버리지가 완전하지 않음. 우선순위 순:
-- 🔴 **`br`/`zstd`/`deflate` 바디 디코딩** — 미구현. Brotli(Cloudflare 기본) 응답 시 모든 바디 정규식이 압축 바이트를 스캔 → 글로벌 미탐. `Content-Encoding` 기준 디코딩(or `identity` 강제). (P0, 위 2번)
-- 🔴 **512 KiB 바디 truncation이 silent** — 큰 번들의 잘린 뒤쪽 앵커 미탐. truncation 발생 시 기록(truncated 바디에 "clean" 보고 금지). (P0, 위 2번)
-- 🟠 **`changeme`(PS-019) 배선** — 마지막 stub. argv+파서 작성, 실 exec 1회 검증.
-- 🟠 **`subzy` fingerprints DB 런타임 provisioning(#0e)** — DB 없으면 tool-failed(파서는 검증됨). 이미지/런타임에 DB 번들.
-- 🟡 **PS-009 저엔트로피/dev-note 미탐 tail(리뷰 #5 의도적 trade)** — 범용 `password:`/`api_key`/`todo:fixme` 앵커 제거로 하드코딩 저엔트로피 크리덴셜·위험 dev-note 미탐. 재도입 시 오탐 재발 위험 — 필요 시 별도 저-신뢰 시그니처로 분리 검토.
-- 🟡 **잔존 오탐(수용)** — `browser_password_hint` 등 credential-adjacent 파라미터, `dev.min.js` 같은 3-label 코드자산은 여전히 발화 가능(드묾). 실측 오탐 보고 시 재검토.
-- ⚪ **FR-7 dedup-pass 이월** — IdentityKey P2 멱등성 위배로 r16에서 제외. 별도 설계 필요 시 재기.
-- ⚪ **발견/서브도메인 스코프** — 사람 DAST 대비 최대 갭(별개 대형 increment; Backlog TOP 후보).
+### 📌 Forward TODO (2026-07-29, r17 종료 시점) — 우선순위 순
+검출은 정직하고, 관측 엔진·transport·probe 대부분이 배선됨. 남은 것:
 
-### 📌 AI-DLC 진행 상태 (r16)
-- ⏳ **Code Gen Part 2 완료 게이트 승인 대기** → Build & Test → Operations. (feat/observation-fp: `0c4e0d3` FR-6+검증 · `f35305e` 리뷰수정 · `170d5c4` README)
+**검출 커버리지 (다음 increment 후보)**
+- 🟠 **`changeme`(PS-019) 배선** — 마지막 probe stub. argv+파서 작성, 실 exec 1회 검증. → 배선 시 PS-019가 tool-failed→judged.
+- 🟠 **`subzy` fingerprints DB 런타임 provisioning(#0e)** — DB 없으면 PS-025 tool-failed(파서는 검증됨). 이미지에 `fingerprints.json`(EdOverflow) 번들 or init/사이드카.
+- 🔴 **발견/서브도메인 스코프** — 사람 DAST 대비 **최대 갭**. 서브도메인 열거 + JS-발견 URL 확대(별개 대형 increment).
+
+**완료됨 (이월 해소)**
+- ✅ ~~`br`/`zstd`/`deflate` 바디 디코딩 + 512KiB truncation 노출~~ **r17 완료**.
+- ✅ ~~observation dictionary 심화~~ **r16 완료**(OSS 증류).
+
+**소규모 후속**
+- ⚪ **severity.yaml 배선** — 파일·`findings/severity`·`findings/normalize`는 있으나 live 경로 미배선(체커가 직접 severity 설정).
+- ⚪ **StopScan/ResumeScan HTTP 라우트** — 구현됨, 라우트 미노출.
+- ⚪ **x/text→v0.39.0+ 범프** — GO-2026-5970(간접 dep, non-blocking).
+- ⚪ **r17 F9(latent)** — 디코드 후 HAR의 압축 Content-Encoding/Length 헤더 잔존(소비자 없음). 디코드 시 strip.
+- ⚪ **PS-009 저엔트로피/dev-note 미탐 tail**(r16 #5 trade) · **잔존 오탐 수용**(browser_password_hint 등) — 실측 보고 시 재검토.
+- ⚪ **FR-7 dedup-pass 이월**(r16) — IdentityKey P2 멱등성 위배로 제외. 별도 설계 시 재기.
+
+**대형 후속 (infra-plan §2/§4/§5)**
+- ⬜ **§2 Financial 인증-프록시 하드닝** — Chromium provisioning, HTTPS CONNECT+MITM CA, storageState 세션 자동갱신, LoginKeeper 통합. (금융앱 JS-토큰 인증은 더 무거운 설계 — 상세는 아래 Deferred infra work.)
+- ⬜ **§4 PlaywrightDiscoverer** — 동적 주입 JS 발견(정적 `<script src>` 파서가 놓치는 것). `hasPasswordField` SPA 오탐의 실제 해법.
+- ⬜ **§5 OTel(ProgressReporter)·OIDC/mTLS(Authorizer)** — seam 존재, 옆에 구현체 추가.
+
+### 📌 AI-DLC 진행 상태 (2026-07-29)
+- ✅ **r7~r17 전부 main 병합 완료**(main `71ceabe`). 열린 PR 없음. 다음 increment 대기.
 
 ### 🔴 TOP PRIORITY — Wire the 7 probe CLIs for real (infra-plan §3)
 **chiller judges only 10 of the 26 KISA items today.** No OSS tool has ever been executed as a
