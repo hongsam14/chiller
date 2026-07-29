@@ -5,6 +5,30 @@
 
 The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Below is what MUST happen before the durable backends run in production, and the honest limitations carried forward.
 
+## Increment log — subzy fingerprints DB provisioning (#0e, r18, 2026-07-29)
+
+> **CLOSED (green, Build & Test approved 2026-07-29).** Closes #0e: subzy (PS-025 subdomain takeover)
+> self-fetched its fingerprint DB from a dead URL → parse error → `tool-failed` on every run. subzy v1.1.0
+> has **no fingerprint-path flag** (verified via `run --help`), so the DB is provisioned **operator-side**,
+> not baked into the image (it is subzy's own community-maintained data — same pattern as `make dev-env`
+> secrets / storageState).
+>
+> - **`make subzy-db`** fetches a **pinned** `fingerprints.json` (EdOverflow/can-i-take-over-xyz @
+>   `5bd4e12`) to a git-ignored `deploy/subzy/fingerprints.json`; `-f` fails loudly on a dead URL at
+>   provision time (fixable), not silently at scan time. The operator mounts it read-only at
+>   `/opt/subzy/fingerprints.json` (`SUBZY_DB`); the adapter runs subzy with `HOME=/opt` so it reads it.
+> - **Honesty is independent of the tool:** a precheck fails PS-025 to `tool-failed` unless the exact file
+>   subzy will read is a present, non-directory, **non-empty JSON fingerprint array** — an absent/empty/
+>   malformed DB can never become a false-clean.
+>
+> **A workflow code review (high, 8 findings) followed; 6 fixed, 1 verified-no-change, 1 skipped.** The most
+> severe was a real false-clean bug (the guard checked a different path than subzy reads) — fixed. Verified
+> in-image (`chiller:r18`): DB mounted → subzy runs & produces a verdict; no DB → honest degradation;
+> `--read-only` rootfs + DB → runs. See `construction/build-and-test/subzy-db-build-and-test-summary.md`.
+>
+> **PS-025 now judged** when the operator provisions the DB; only `changeme` (PS-019) remains an unwired
+> stub. **Carried forward:** auto-refresh of the DB (CI cron + drift) — Q3 chose manual; a follow-up.
+
 ## Increment log — P0 Transport Correctness (r17, 2026-07-29)
 
 > **CLOSED (green, Build & Test approved 2026-07-29).** Closes the top detection-correctness gap
@@ -114,7 +138,7 @@ The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Belo
 | 0b | ~~Confirm tool version pins~~ **DONE 2026-07-14** (at first build): `httpx@v1.6.10`, `subzy@v1.1.0` (module path `LukaSikic/subzy`), testssl `v3.2.1`, `dirhunt==0.9.0`; humble & Corsy are **git clones** (no PyPI release), not pip. **Still: pin the `python:3.12-slim-bookworm` base and the git tools by digest/commit** (SECURITY-10/13). | Versions now verified to build & run; digest/commit pin remains for supply-chain integrity. | `Dockerfile`; Dependabot |
 | ~~0c~~ | **subzy writable HOME under read-only rootfs** — **DONE 2026-07-14**: `ENV HOME=/scratch` in the image + `fsGroup: 10001` on the worker pod so the `/scratch` emptyDir is writable by the non-root uid. Validated with `docker run --read-only --tmpfs /scratch` (subzy PASS). | subzy caches its fingerprints DB in `$HOME`; read-only rootfs made `/home/app` unwritable. | `Dockerfile`, `deploy/k8s/worker.yaml` |
 | ~~0d~~ | **Validate & fix positive-finding parser schemas** — **DONE (all 6) 2026-07-15**. r8 closed humble/httpx/Corsy (Juice Shop). **r9 closed testssl/dirhunt/subzy** against a committed `test/fixtures/vuln-target/` fixture + public badssl: real runs found **two fabricated parser schemas that emitted zero findings on real vulnerable output** and rewrote them — dirhunt (real signal `index_of_processors[].crawler_url.flags:"index_of"`, not `results[].flags:"directory-listing"`) and subzy (real signal string `status:"vulnerable"`, not boolean `vulnerable`); testssl schema confirmed correct. In-image end-to-end now asserts POSITIVE findings for all six (dirhunt CWE-548, subzy takeover, testssl CWE-1327, + humble/httpx/Corsy). | `internal/scan/checking/probe/{parsers,parsers_pbt_test,integration_test}.go`, `test/fixtures/vuln-target/`; summary `construction/scan/code/detection-fidelity-summary.md` |
-| 0e | **Provision subzy's fingerprints DB in the image** — subzy v1.1.0's self-fetch URL is dead (returns a 404 text page → "invalid character ':'" parse error), so without a DB every subzy run fails → PS-025 reported `tool-failed`. Discovered in r9; the parser is validated (a mounted real DB → correct takeover finding). Bundle `fingerprints.json` (EdOverflow can-i-take-over-xyz) into the image at subzy's `$HOME/subzy/` path, or supply it via a sidecar/init. **Honest state: false-clean-safe** (tool-failed, never silent clean). | `Dockerfile` (add `COPY` of a pinned fingerprints.json), Dependabot/refresh policy |
+| ~~0e~~ | **Provision subzy's fingerprints DB — ✅ DONE (r18, 2026-07-29).** subzy v1.1.0 has no fingerprint-path flag; it reads `$HOME/subzy/fingerprints.json` and self-fetches from a dead URL otherwise. `make subzy-db` provisions a pinned `fingerprints.json` (EdOverflow can-i-take-over-xyz @ `5bd4e12`) to a git-ignored path the operator mounts read-only at `/opt/subzy/fingerprints.json`; the adapter runs subzy with `HOME=/opt` so it reads it. Chosen operator-provisioning (not baked) — subzy's own community data, matching `make dev-env`/storageState. A precheck fails PS-025 to `tool-failed` on an absent/empty/malformed DB (never false-clean). Verified in-image (normal + read-only rootfs). | `make subzy-db`, `Dockerfile`, `deploy/{compose,k8s}` |
 | 1 | **Run the Docker-backed integration suite** — `make test-integration` in a CI job with a Docker daemon | The Mongo/Valkey contract suites compile but were **never executed** (no Docker in the authoring env). Until they pass against real containers, the durable backends are unverified. | `internal/platform/{taskstore,workqueue}/*_test.go` (`//go:build integration`) |
 | 2 | **Bump the Go toolchain to ≥ 1.26.5 and rebuild** | `govulncheck` flagged **GO-2026-5856** (crypto/tls ECH privacy leak) on our call paths (proxy/fetch/Mongo/Valkey TLS). Fixed in go1.26.5. No source change needed. | build pipeline / Dockerfile base |
 | 3 | **Replace every image tag with a digest** (`@sha256:…`); no `latest` | SECURITY-10/13 supply-chain integrity | `Dockerfile`, `deploy/k8s/*.yaml`, `deploy/compose/docker-compose.yml` |

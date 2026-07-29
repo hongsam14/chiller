@@ -26,6 +26,24 @@ infrastructure-design/`):
 Replace every `image:` tag with a digest (`@sha256:...`) before production. No
 `latest`. A CI step builds, scans (`govulncheck`), and emits an SBOM.
 
+## subzy takeover-fingerprint DB (#0e) — operator-provisioned
+
+`subzy` (PS-025 subdomain takeover) self-fetches its fingerprint DB from a dead URL,
+so it is provisioned out-of-band like the secrets (the repo/image ships no DB):
+
+```bash
+make subzy-db   # → deploy/subzy/fingerprints.json (pinned; git-ignored)
+kubectl create configmap subzy-db \
+  --from-file=fingerprints.json=deploy/subzy/fingerprints.json
+```
+
+The worker mounts it read-only at `/opt/subzy` (`SUBZY_DB`); the adapter runs subzy with
+`HOME=/opt` so it reads `/opt/subzy/fingerprints.json` instead of self-fetching. **Without
+it, PS-025 is honestly `tool-failed` (never a false clean).** Refresh: bump
+`SUBZY_DB_COMMIT` in the Makefile, re-run `make subzy-db`, recreate the ConfigMap. For
+`docker compose`, `make subzy-db` + the mount in `deploy/compose/docker-compose.yml`
+handle this automatically.
+
 ## Rollout (Q11=C)
 Rolling update + version-pinned rollback (`kubectl rollout undo`). No canary /
 blue-green (batch scanner; no live-traffic cutover needed). manager/proxy are
