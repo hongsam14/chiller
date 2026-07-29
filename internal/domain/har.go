@@ -12,6 +12,12 @@ type HAREntry struct {
 	Cookies   []Cookie  `bson:"cookies" json:"cookies"`     // → PS-015/016/017 (Secure/HttpOnly/SameSite)
 	Body      []byte    `bson:"body" json:"body"`           // BOUNDED (max-body-size, NFR-16); HTML or JS
 	FetchedAt Timestamp `bson:"fetchedAt" json:"fetchedAt"` // stamped by the fetcher; opaque to domain
+	// Truncated means the body is NOT fully available as decoded text (r17, FR-T3):
+	// the decoded output hit the max-body cap, a decode error left it partial, or the
+	// Content-Encoding was unknown/unsupported (present but undecoded). A body-based
+	// "no finding" on a truncated artifact is not authoritative — it is surfaced in the
+	// report, never treated as a complete clean scan. Old docs decode as false.
+	Truncated bool `bson:"truncated,omitempty" json:"truncated,omitempty"`
 }
 
 // Header is one response header.

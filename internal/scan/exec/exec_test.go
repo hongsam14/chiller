@@ -112,6 +112,74 @@ func TestRun_WellKnownCWE_OwningSignatureOnly(t *testing.T) {
 	}
 }
 
+// nilFetcher returns (nil, nil) — an out-of-contract but defensively-tolerated result.
+type nilFetcher struct{}
+
+func (nilFetcher) Fetch(context.Context, domain.ScanID, domain.Target) (*domain.HAREntry, error) {
+	return nil, nil
+}
+
+// F7 (review): a Fetcher/cache returning (nil, nil) must not panic the worker on the
+// new out.Truncated dereference — the nil is tolerated as before.
+func TestRun_NilFetchResult_NoPanic(t *testing.T) {
+	e := New([]domain.Checker{fakeChecker{id: "observation:CWE-1", scope: domain.URLScoped}}, nilFetcher{}, noDisc{}, openGate{})
+	out := e.Run(context.Background(), domain.WorkItem{ID: "n", Scope: domain.URLScoped, Target: domain.Target{URL: "https://h/", Host: "h"}}, fetch.NewInMemoryCache())
+	if len(out.TruncatedURLs) != 0 {
+		t.Errorf("nil fetch result: want no truncated URLs, got %v", out.TruncatedURLs)
+	}
+}
+
+// truncFetcher marks a body Truncated iff its URL matches truncatedURL.
+type truncFetcher struct{ truncatedURL string }
+
+func (f truncFetcher) Fetch(_ context.Context, _ domain.ScanID, t domain.Target) (*domain.HAREntry, error) {
+	return &domain.HAREntry{Status: 200, URL: t.URL, Truncated: t.URL == f.truncatedURL}, nil
+}
+
+// oneJSDisc discovers a single JS asset.
+type oneJSDisc struct{ js domain.Target }
+
+func (d oneJSDisc) Discover(domain.Target, *domain.HAREntry) []domain.Target {
+	return []domain.Target{d.js}
+}
+
+// TestRun_Truncated_MainOrJS pins r17 FR-T4: an item's outcome is Truncated when the
+// main response OR any discovered JS asset was truncated (the review-F2 fix — PS-009
+// scans the JS source, so a truncated JS body is an incomplete scan too).
+func TestRun_Truncated_MainOrJS(t *testing.T) {
+	obs := fakeChecker{id: "observation:CWE-615", scope: domain.URLScoped}
+	cache := fetch.NewInMemoryCache()
+
+	only := func(urls []string) string {
+		if len(urls) != 1 {
+			t.Fatalf("want exactly one truncated URL, got %v", urls)
+		}
+		return urls[0]
+	}
+
+	// (a) main response truncated → the MAIN URL is reported.
+	eMain := New([]domain.Checker{obs}, truncFetcher{truncatedURL: "https://h/"}, noDisc{}, openGate{})
+	out := eMain.Run(context.Background(), domain.WorkItem{ID: "m", Scope: domain.URLScoped, Target: domain.Target{URL: "https://h/", Host: "h"}}, cache)
+	if got := only(out.TruncatedURLs); got != "https://h/" {
+		t.Errorf("main truncation: reported %q, want the page URL", got)
+	}
+
+	// (b) main OK but a discovered JS asset truncated → the JS ASSET URL is reported,
+	// not the page URL (review F5 — the operator must be pointed at the right artifact).
+	eJS := New([]domain.Checker{obs}, truncFetcher{truncatedURL: "https://h/app.js"},
+		oneJSDisc{js: domain.Target{URL: "https://h/app.js", Host: "h"}}, openGate{})
+	out = eJS.Run(context.Background(), domain.WorkItem{ID: "j", Scope: domain.URLScoped, Target: domain.Target{URL: "https://h/", Host: "h"}}, cache)
+	if got := only(out.TruncatedURLs); got != "https://h/app.js" {
+		t.Errorf("JS truncation: reported %q, want the JS asset URL (F5)", got)
+	}
+
+	// (c) nothing truncated → no URLs.
+	eClean := New([]domain.Checker{obs}, truncFetcher{truncatedURL: "none"}, noDisc{}, openGate{})
+	if out := eClean.Run(context.Background(), domain.WorkItem{ID: "c", Scope: domain.URLScoped, Target: domain.Target{URL: "https://h/", Host: "h"}}, cache); len(out.TruncatedURLs) != 0 {
+		t.Errorf("no truncation must leave TruncatedURLs empty, got %v", out.TruncatedURLs)
+	}
+}
+
 func TestRun_FetchFailure_AllUrlScopedToolFailed(t *testing.T) {
 	checkers := []domain.Checker{
 		fakeChecker{id: "a", scope: domain.URLScoped},
