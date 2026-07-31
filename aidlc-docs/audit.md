@@ -1673,3 +1673,92 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: [AskUserQuestion] "B: stub 유지 (정직 바닥)" 선택
 **AI Response**: PS-019는 정직하게 tool-failed 유지. changeme 배선/well-known B 확장/applicable 훅 모두 소비자 없어 코드 미배선(기능 변경 0). 정직성 수정만: adapters.go Changeme 주석 + AllAdapters 주석 + Dockerfile 주석의 부정확한 "Python2 heritage"(스모크가 Python3로 반증)를 실제 이유(telnetlib py3.13+ 제거로 python:3.14 import 불가 + ~1GB/공격표면 부적합)로 정정. gofmt 정리(리스트 후 빈 주석줄). go build/vet/fmt green. aidlc-state r19 종결 기록 + Forward TODO의 changeme 항목을 "조사완료·stub유지·미래경로 Option C" 로 갱신. 스모크 이미지 4개 정리. 남은 최상위 갭: 발견/서브도메인 스코프.
 **Context**: CONSTRUCTION - r19 종결(조사→정직 바닥). 코드 기능 무변경, 문서/주석만.
+
+## Requirements Analysis — 시작 (report 개선: evidence 강화, r20)
+**Timestamp**: 2026-07-29T09:10:00Z
+**User Input**: "ai-dlc로 report개선작업. evidence 강화"
+**AI Response**: brownfield 증분 착수. 워크스페이스/상태(aidlc-state.md) + evidence 모델 실코드 조사: domain.Evidence{Snippets []string}(bounded 8, ≤200자, redacted, 암호화 at-rest, AAD-bound, 스캔후 ledger purge) → findingDTO.Evidence []string → /report 드릴다운 <pre> 렌더. 갭: snippet이 bare 문자열이라 (1) 매치 위치(헤더 vs 바디, 오프셋/라인) (2) 발화 시그니처/룰 ID (3) HTTP 컨텍스트(status/method) (4) 재현성 정보 없음. intent 모호 → 한글 clarifying 질문 라운드로 스코프 확정 예정.
+**Context**: INCEPTION - Requirements Analysis 착수(r20).
+
+## Requirements Analysis — 명확화 완료 + 문서 작성 (r20)
+**Timestamp**: 2026-07-29T09:30:00Z
+**User Input**: [AskUserQuestion] Q1 note="이 정보를 기반으로 AI가 능동 공격 플랜을 세울건데, 현재는 evidence가 없음으로 정오탐 체크가 불가능함" · Q2="observation 우선, probe best-effort" · Q3="새 스키마로 교체" · Q-A(다중)="매치 위치, 요청 컨텍스트, 룰/시그니처 귀속+가설, 응답 컨텍스트"(4개 전부) · Q-B="기존 /report DTO 확장"
+**AI Response**: 의도 재정의 확인 — evidence 강화는 고객 UI가 아니라 다운스트림 AI(능동 공격 플래너+정오탐 체커) 기계판독 근거. 실현가능성 grounding: ScanContext.Response=*HAREntry가 URL/Scheme/Status/Headers/Cookies/Body/FetchedAt/Truncated 전부 보유 → observation 요청/응답 컨텍스트 전 필드 캡처시점 접근가능(신규 fetch 무). probe는 HAREntry 없어 best-effort. requirements-evidence.md 작성: D1~D5, FR-E1~E13(모델교체·매치위치·룰귀속+가설·요청/응답 컨텍스트·observation완전/probe정직 best-effort·경계/at-rest암호화 유지·normalize/dedup·DTO확장·26파티션 불변), extension 준수(security-baseline blocking: 경계/redaction/암호화; PBT FULL: 경계·멱등·날조없음·seal왕복). 승인 게이트 제시.
+**Context**: INCEPTION - Requirements Analysis 문서 완료, 승인 대기(r20).
+
+## Requirements Analysis — 승인 (r20)
+**Timestamp**: 2026-07-30T00:00:00Z
+**User Input**: "Requirements 승인"
+**AI Response**: requirements-evidence.md 승인 확정. FR-E10(요청 헤더 Authorization/Cookie·세션 토큰을 evidence에 보존, at-rest 암호화·로그 redact)도 명시대로 승인 처리 — FD에서 마스킹 정책 재확인 여지 유지. 브랜치 정리 후 feat/evidence-enrichment(off fix/ps009-capture-group off main) 착수. Workflow Planning 진행.
+**Context**: INCEPTION - Requirements 승인, Workflow Planning 착수(r20).
+
+## Workflow Planning — 실행 계획 작성 (r20)
+**Timestamp**: 2026-07-30T00:10:00Z
+**User Input**: (Requirements 승인에 이어 Workflow Planning 자동 진행)
+**AI Response**: execution-plan-evidence.md 작성. Risk=Medium. EXECUTE(4): Functional Design(Evidence 스키마 교체=데이터모델 트리거; 캡처 스레딩·seal/open·normalize/dedup·DTO·redaction 정책) · Code Generation · Build&Test(전게이트+PBT FULL) · Operations. SKIP(6): Reverse(레퍼런스 존재)·User Stories(신규 여정 없음, 기계 소비자 데이터계약)·App Design(신규 컴포넌트 없음)·Units(분해 불필요)·NFR(요구사항 §4에 열거)·Infra(배포 변경 없음, 기존 seam). 영향: domain(U0)+scan observation/probe(U2)+findings normalize/dedup/store(U3)+platform taskstore/api(U1) 횡단. 리스크 완화: 강타입 컴파일 강제·seal 왕복 PBT·경계/암호화/redact·probe 날조없음 PBT·26파티션 e2e. 신규 dep 없음 예상. 승인 게이트 제시.
+**Context**: INCEPTION - Workflow Planning 문서 완료, 승인 대기(r20).
+
+## Workflow Planning — 승인 (r20)
+**Timestamp**: 2026-07-30T00:20:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: execution-plan-evidence.md 승인. Functional Design 착수 — evidence 파이프라인 전구간(domain/normalize/dedup/store_mongo/taskstore/observation/probe/report_view) 정독 후 신규 Evidence 구조 설계.
+**Context**: INCEPTION - Workflow Planning 승인 → Functional Design(r20).
+
+## Functional Design — 작성 (r20)
+**Timestamp**: 2026-07-30T00:45:00Z
+**User Input**: (Workflow Planning 승인에 이어 FD 자동 진행)
+**AI Response**: evidence-functional-design.md 작성. 실코드 grounding: live 경로는 체커가 domain.Finding 직접 생성(normalize dormant), ctx.Response=HAREntry로 캡처 데이터 가용, fetcher는 항상 GET+고정 Accept-Encoding(요청헤더 미기록), seal은 ev.Snippets만 직렬화(store_mongo+taskstore_mongo), 16 .Snippets 파급 8파일. 설계 FD-1(신규 Evidence{Items[]EvidenceItem{Snippet,Location,Rule,Hypothesis}, Request*, Response*} + MatchPart + 경계상수 MaxEvidenceItems/MaxEvidenceHeaders/maxHeaderValueLen + Empty()) · FD-2(observation 완전: matchContext가 offset/len 반환, 바디/헤더/쿠키/URL Part, DiscoveredJS는 Location.SourceURL, Rule/Hypothesis 13표) · FD-3(probe best-effort: Snippet+Rule=tool+Hypothesis, Location/Req/Resp 날조금지) · FD-4(normalize dormant 컴파일: []string→[]Item{Snippet}) · FD-5(dedup collapse: item identity union+Req/Resp 최초non-nil) · FD-6(seal/open 전체구조 json.Marshal(ev), AAD 불변, Empty 게이트) · FD-7(findingDTO 구조화+report_ui ev.snippet 교정) · FD-8(경계+암호화+D5 요청헤더 정직생략) · FD-9(PBT: 경계·멱등·probe날조없음·seal왕복항등). 신규 dep 없음. 2옵션 게이트(Request Changes/Continue).
+**Context**: CONSTRUCTION - Functional Design 문서 완료, 승인 대기(r20).
+
+## Functional Design — 자기검증(근거추출→요구사항 필터→디자인 리뷰) + 교정 (r20)
+**Timestamp**: 2026-07-30T01:05:00Z
+**User Input**: "디자인의 근거를 추출. 추출한 근거를 요구사항을 고려해서 적절한지 리뷰. 적절한 근거만을 필터링해서 그 근거들을 기반으로 디자인을 리뷰"
+**AI Response**: 3단계 자기검증 수행. 근거 R1~R12 추출 → 요구사항 대비 필터: R5(one finding=one primary exchange)=오류(실코드 signatures.go:136-141 반증: JS 매치도 finding.TargetURL=페이지, js.URL 폐기), R7(Empty=Items만)=불완전(seal 왕복 property 모순), R9(관련 헤더 예시)=미명세. 나머지 9개 유효. 유효+교정 근거로 디자인 재리뷰 → 결함 F1(🔴 JS-소스 Request/Response 오귀속)·F2(🟠 Empty 게이트 vs seal 항등)·F3(🟠 응답헤더 비결정)·F4(🟠 구리포트 Unmarshal 실패 강등 필요)·F5(⚪ 개명 churn). FD 교정: FD-1 Empty()에 Request/Response 포함 + F1 NOTE, FD-2 findingAt(src) 소스교환 귀속+Location.SourceURL+결정적 헤더 allowlist, FD-6 open 실패 graceful 강등, FD-9 #4 무조건 성립, §11.5 자기검증표 추가. 긍정확인: dedup 최초non-nil은 IdentityKey에 TargetURL 포함이라 안전. 2옵션 게이트 유지.
+**Context**: CONSTRUCTION - FD 자기검증 완료, 교정 반영, 승인 대기(r20).
+
+## Functional Design — 승인 (r20)
+**Timestamp**: 2026-07-30T01:15:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: evidence-functional-design.md(자기검증 F1~F4 교정 포함) 승인. Code Generation Part 1(계획) 착수 — evidence-code-generation-plan.md 작성.
+**Context**: CONSTRUCTION - FD 승인 → Code Gen P1(r20).
+
+## Code Generation Part 1 — 계획 작성 (r20)
+**Timestamp**: 2026-07-30T01:25:00Z
+**User Input**: (FD 승인에 이어 Code Gen P1 자동 진행)
+**AI Response**: evidence-code-generation-plan.md 작성. 전략=domain 먼저(컴파일 파급) 후 소비자 복구+강화. 스텝 A(모델+상수+Empty) → B(normalize/dedup) → C(store in-mem+mongo seal/open+F4강등) → D(taskstore ledger+F4) → E(observation 완전: findingAt/matchContext offset-len/13 Rule-Hypothesis/F1 JS SourceURL/F3 헤더 allowlist) → F(probe best-effort+hypothesisFor) → G(DTO 구조화+report_ui ev.snippet 수정) → H(회귀+PBT 경계/멱등/probe날조없음/seal왕복항등/F1/F4) → I(전게이트). 각 스텝 부분빌드 수용기준. 불변·신규dep0. 2옵션 게이트.
+**Context**: CONSTRUCTION - Code Gen P1 계획 완료, 승인 대기(r20).
+
+## Code Generation Part 1 — 자기검증(근거추출→요구사항 필터→플랜 리뷰) + 교정 (r20)
+**Timestamp**: 2026-07-30T01:40:00Z
+**User Input**: "플랜의 근거를 추출. 추출한 근거를 요구사항을 고려해서 적절한지 리뷰. 적절한 근거만을 필터링해서 그 근거들을 기반으로 플랜을 리뷰"
+**AI Response**: 3단계 자기검증. 근거 P-R1~P-R9 추출 → 필터: P-R5(전 시그니처 findingAt 이관)만 불완전(config-driven 매치는 별도 경로). 나머지 유효. 결함 PD-A(🟠 config-룰 매치 헬퍼 scan/APIDocRules.match/internal.match가 문자열만 반환·오프셋 폐기→PS-009/013/internal Location.Offset·Rule 공백; 실코드 signatures.go:162-215)·PD-B(⚪ findingAt src=nil 견뎌야; sessionInURL URL-only 발화 signatures.go:349-360). 실코드로 PD4 후보(config 룰 id 부재로 재생성 필요) 소멸 확인 — SecretRule.Name 존재·scan()이 이미 노출. 플랜 교정: E1(findingAt nil-safe)·E5(매치 헬퍼 시그니처 확장, SecretRule.Name 재사용, 재생성 불요)·자기검증절 추가. 2옵션 게이트 유지.
+**Context**: CONSTRUCTION - Code Gen P1 자기검증 완료, 교정 반영, 승인 대기(r20).
+
+## Code Generation Part 2 — 생성 착수 (r20)
+**Timestamp**: 2026-07-30T01:50:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: Part 2 코드 생성 실행. 플랜 A→I 순서(domain→findings→platform→scan capture→테스트→게이트) 증분 빌드.
+**Context**: CONSTRUCTION - Code Gen P2 생성 착수(r20).
+
+## Code Generation Part 2 — 완료 검증 (kernel-panic 후 재개, r20)
+**Timestamp**: 2026-07-31T00:00:00Z
+**User Input**: "evidence 관련 작업을 하다가 kernel panic이 나서 작업이 중단되었음. 작업 재개"
+**AI Response**: r20 evidence Code Gen Part 2가 panic 이전 이미 CODE COMPLETE였음을 검증으로 확인. 상태 재구성: aidlc-state/audit 마지막 기록="P2 생성 착수" 후 panic → 코드·테스트는 작성됐으나 체크박스·완료audit·승인게이트 미기록. 실측 검증: go build ./... green(A~G 전 소비자 컴파일) · go test ./... 전통과 · go vet green · gofmt clean · make arch-check OK · go test -race FAIL/DATA RACE 0 · **make gosec(pinned v2.22.9) 0** · make secrets(gitleaks) no leaks. 코드 실체 확인: domain.Evidence{Items[]EvidenceItem,Request*,Response*}+Location+MatchPart+MaxEvidenceItems/Headers+Empty()(A) · 신규 evidence 테스트 5파일(dedup/store-seal/taskstore-seal/observation-f1/probe)(H) · findingAt(cwe,sev,url,src,item) observation(E) · pFinding+hypothesisFor probe best-effort(F) · findingDTO.Evidence[]evidenceItemDTO{Snippet,Rule,Hypothesis}+report_ui ev.snippet(R10 버그 수정)(G). 참고: 수동 gosec v2.26.1은 기존 orchestrator.go:295(G118)·exec_linux.go:22(G204) 신규룰로 표기하나 pinned 게이트 baseline 0 — evidence 무관·기존 파일. evidence-code-generation-plan.md 체크박스 A1~I3 전부 [x], Status=CODE COMPLETE+게이트 GREEN 갱신. Code Gen Part 2 표준 2옵션 완료 게이트 제시.
+**Context**: CONSTRUCTION - Code Gen P2 완료 검증(panic 복구), 승인 대기(r20).
+
+---
+
+## 코드 리뷰(/code-review high, workflow) + 수정 — evidence 누락구현 점검 (r20)
+**Timestamp**: 2026-07-31T02:00:00Z
+**User Input**: "/code-review 자꾸 crash가 났었으니 누락된 구현이 있는지 자세하게 확인" → (findings 보고 후) "모두 수정"
+**AI Response**: workflow-backed high 리뷰(16에이전트, finder 4→후보 13→검증). **핵심 결론: 플랜 A~I 누락 구현 없음** — panic으로 절반만 적용됐을 가능성 반증(seal/open 왕복·dedup 병합·probe 날조없음·Location/Rule/Hypothesis 전부 정상). dedup 병합/keepExistingEvidence 후보 4건은 검증서 refuted. 확정 6건 전부 수정+회귀테스트:
+- F1(🔴 correctness, taskstore_mongo.go:498): openOutcome이 decrypt 성공 후 unmarshal 실패 시 evidence 무언 소실(resume data loss). 강등을 **구 []string 스키마로만 한정**, 그 외 손상은 에러 표면화. 회귀: TestLedgerEvidenceSeal_OldSchemaDegradesGracefully + _CorruptPlaintextSurfacesError.
+- F2(🟠 correctness, store_mongo.go:327): openEvidence 동일 무언 소실 패턴 → 동일 수정(구 배열만 강등, 그 외 에러). 회귀: TestEvidenceSeal_CorruptPlaintextSurfacesError.
+- F3(🟠 correctness, report_view.go:55): locationDTO.Offset `omitempty`가 byte-0 매치를 wire에서 삭제 → omitempty 제거.
+- F4(🟠 test, contract_test.go:204): testNoAliasing이 SnippetStrings()(fresh slice) 변경으로 무의미화 → in[0].Evidence.Items[0].Snippet 직접 변경+Items 단언으로 deep-copy 불변 재활성.
+- F5(⚪ correctness, signatures.go:78): content-type가 ContentType 필드+Headers allowlist 중복(슬롯 낭비) → respHeaderAllow에서 content-type 제거(전용 필드로만).
+- F6(⚪ cleanup, report_ui.go:243): 미정의 CSS .f-evmeta/.f-evhyp → style 블록에 muted/small(가설 italic) 규칙 추가.
+전 게이트 재검 green: build/vet/gofmt/arch-check/test/**-race(0)**/**gosec pinned(0)**/**secrets(no leaks)**. 26-파티션·소유권·인터페이스·probe 정직성·신규dep0 불변. 신규 회귀 4테스트.
+**Context**: CONSTRUCTION - Code Gen P2 코드리뷰+수정 완료(r20), 승인 대기.
+
+---
