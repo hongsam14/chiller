@@ -15,7 +15,7 @@ import (
 // This file holds the real argv builders + stdout→Finding parsers for the wired
 // probes (Q5=A: JSON output modes). Each parser emits Findings carrying ONLY its
 // tool's owned CWE(s), so ownership → PS-ID stays unambiguous. Evidence is
-// bounded to domain.MaxEvidenceSnippets.
+// bounded to domain.MaxEvidenceItems.
 //
 // HONESTY (F6): every parser below is now VERIFIED against real tool output.
 // The golden fixtures in testdata/ are real captures — humble/httpx/Corsy from
@@ -29,13 +29,49 @@ import (
 // against the real golden, never by loosening the parser to hide it.
 
 // pFinding builds a probe Finding: owned CWE, tool name as source, bounded evidence.
+// Evidence is best-effort (r20, FR-E7): a probe parses an external CLI's stdout, so
+// there is no HAR — only the tool name (rule attribution) and the raw line (snippet)
+// are honest to record. Location / Request / Response are deliberately left zero:
+// the probe did not observe them, and fabricating them would break the honesty
+// contract. A downstream consumer distinguishes probe evidence by their absence.
 func pFinding(cwe domain.CWE, tool, url, evidence string) domain.Finding {
 	return domain.Finding{
 		CWEs:       []domain.CWE{cwe},
 		TargetURL:  url,
 		SourceTool: tool,
 		Severity:   severityFor(cwe),
-		Evidence:   domain.Evidence{Snippets: []string{clip(evidence)}},
+		Evidence: domain.Evidence{Items: []domain.EvidenceItem{{
+			Snippet:    clip(evidence),
+			Rule:       tool,
+			Hypothesis: hypothesisFor(cwe),
+		}}},
+	}
+}
+
+// hypothesisFor is the short "what this finding means" line a downstream AI uses as
+// its starting hypothesis for active verification (FR-E3), keyed by owned CWE.
+func hypothesisFor(cwe domain.CWE) string {
+	switch cwe {
+	case "CWE-1327":
+		return "weak/obsolete TLS configuration"
+	case "CWE-798":
+		return "default or hardcoded credentials accepted"
+	case "CWE-548":
+		return "directory listing enabled"
+	case "CWE-319":
+		return "sensitive data over cleartext transport"
+	case "CWE-346":
+		return "permissive CORS policy"
+	case "CWE-1021":
+		return "missing framing protection (clickjacking)"
+	case "CWE-693":
+		return "missing security header / protection mechanism"
+	case "CWE-200":
+		return "server/version information disclosure"
+	case domain.NoCanonicalCWE:
+		return "dangling DNS record — subdomain takeover"
+	default:
+		return "passive weakness reported by " + "the owning probe"
 	}
 }
 
@@ -238,7 +274,7 @@ func testsslParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 		case "HIGH", "CRITICAL":
 			out = append(out, pFinding("CWE-1327", "testssl.sh", t.URL,
 				e.ID+": "+e.Finding))
-			if len(out) >= domain.MaxEvidenceSnippets {
+			if len(out) >= domain.MaxEvidenceItems {
 				return out, nil
 			}
 		}
@@ -410,7 +446,7 @@ func dirhuntParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 			continue
 		}
 		out = append(out, pFinding("CWE-548", "dirhunt", t.URL, "directory listing exposed: "+e.CrawlerURL.URL.Address))
-		if len(out) >= domain.MaxEvidenceSnippets {
+		if len(out) >= domain.MaxEvidenceItems {
 			break
 		}
 	}
@@ -448,7 +484,7 @@ func corsyParse(t domain.Target, stdout []byte) ([]domain.Finding, error) {
 	for url, e := range doc {
 		out = append(out, pFinding("CWE-346", "corsy", t.URL,
 			"CORS misconfiguration ["+e.Class+"] at "+url+" (ACAO="+e.ACAO+", ACAC="+e.ACAC+")"))
-		if len(out) >= domain.MaxEvidenceSnippets {
+		if len(out) >= domain.MaxEvidenceItems {
 			break
 		}
 	}

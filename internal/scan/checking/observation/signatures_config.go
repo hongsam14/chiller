@@ -53,7 +53,7 @@ type APIDocRules struct {
 // match returns the matched body-marker evidence when the path is an api-doc path
 // AND the body confirms it, else "". Path matches exactly or as a suffix (so a
 // mounted API under a prefix still hits).
-func (a APIDocRules) match(path string, body []byte) string {
+func (a APIDocRules) match(path string, body []byte) (ev string, offset, matchLen int, ok bool) {
 	hit := false
 	for _, p := range a.Paths {
 		if path == p || strings.HasSuffix(path, p) {
@@ -62,14 +62,14 @@ func (a APIDocRules) match(path string, body []byte) string {
 		}
 	}
 	if !hit {
-		return ""
+		return "", 0, 0, false
 	}
 	for _, m := range a.BodyMarkers {
 		if loc := m.FindIndex(body); loc != nil {
-			return snippet(body[loc[0]:loc[1]])
+			return snippet(body[loc[0]:loc[1]]), loc[0], loc[1] - loc[0], true
 		}
 	}
-	return ""
+	return "", 0, 0, false
 }
 
 // ---- on-disk shapes (match tools/sigimport output) ----

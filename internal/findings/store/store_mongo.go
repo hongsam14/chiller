@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/hongsam14/chiller/internal/crypto"
@@ -299,10 +300,10 @@ func (m *Mongo) LoadFindings(ctx context.Context, scanID domain.ScanID) ([]domai
 // finding. Evidence with no snippets seals to the zero Envelope: "no evidence" is
 // a legitimate state and must not require a key to read back.
 func (m *Mongo) sealEvidence(scanID domain.ScanID, key domain.FindingKey, ev domain.Evidence) (crypto.Envelope, error) {
-	if len(ev.Snippets) == 0 {
+	if ev.Empty() {
 		return crypto.Envelope{}, nil
 	}
-	pt, err := json.Marshal(ev.Snippets)
+	pt, err := json.Marshal(ev)
 	if err != nil {
 		return crypto.Envelope{}, fmt.Errorf("store: marshal evidence: %w", err)
 	}
@@ -319,11 +320,25 @@ func (m *Mongo) openEvidence(scanID domain.ScanID, key domain.FindingKey, env cr
 	}
 	pt, err := crypto.Open(m.kr, env, crypto.EvidenceAAD(string(scanID), string(key)))
 	if err != nil {
+		// A decrypt/AAD failure is a real integrity problem — surface it.
 		return domain.Evidence{}, fmt.Errorf("store: open evidence for %q: %w", key, err)
 	}
-	var snippets []string
-	if err := json.Unmarshal(pt, &snippets); err != nil {
-		return domain.Evidence{}, fmt.Errorf("store: unmarshal evidence for %q: %w", key, err)
+	var ev domain.Evidence
+	if err := json.Unmarshal(pt, &ev); err != nil {
+		// A plaintext-shape mismatch is NOT an integrity failure IF it is the legacy
+		// shape: the r20 evidence schema replaced the old []string form without
+		// migration (re-scan). An old report's plaintext is a JSON array and will not
+		// unmarshal into the struct — degrade to empty evidence and keep the finding
+		// rather than failing the whole report read (resiliency-baseline). New scans
+		// round-trip normally. But authenticated plaintext that is neither the r20
+		// struct nor the old []string array is a genuine corruption — surface it
+		// instead of silently returning empty evidence.
+		var legacy []string
+		if lerr := json.Unmarshal(pt, &legacy); lerr != nil {
+			return domain.Evidence{}, fmt.Errorf("store: unmarshal evidence for %q: %w", key, err)
+		}
+		log.Printf("store: evidence for %q predates the r20 schema; returning empty evidence", key)
+		return domain.Evidence{}, nil
 	}
-	return domain.Evidence{Snippets: snippets}, nil
+	return ev, nil
 }
