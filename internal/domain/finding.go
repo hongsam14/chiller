@@ -13,16 +13,117 @@ import (
 // never appears in a CWE, URL, or tool name, so keys cannot collide.
 const fieldSep = "\x1f"
 
-// MaxEvidenceSnippets bounds the number of snippets retained per finding — one
+// MaxEvidenceItems bounds the number of evidence items retained per finding — one
 // policy shared by every stage that produces or merges evidence (normalize,
-// dedup) so the two bounds cannot silently diverge (R9, FR-12).
-const MaxEvidenceSnippets = 8
+// dedup) so the two bounds cannot silently diverge (R9, FR-12). (Formerly
+// MaxEvidenceSnippets; the bound is unchanged — an "item" carries one snippet.)
+const MaxEvidenceItems = 8
 
-// Evidence is the bounded justification for a finding. Full response bodies are
-// never stored here (FR-12); snippets are bounded and redacted before logging or
-// persistence (R9, SECURITY-03).
+// MaxEvidenceHeaders bounds the request/response header lists carried in evidence
+// context, and MaxEvidenceHeaderValueLen bounds a single header value — so richer
+// evidence (r20) can never become an unbounded header dump (FR-E8, SECURITY-03).
+const (
+	MaxEvidenceHeaders        = 12
+	MaxEvidenceHeaderValueLen = 256
+)
+
+// Evidence is the bounded, structured justification for a finding (r20). Full
+// response bodies are never stored (FR-12); every string is bounded and redacted
+// before logging or persistence (R9, SECURITY-03), and the whole struct is
+// encrypted at rest (SECURITY-01). It is the machine-readable feed a downstream
+// consumer (e.g. an AI active-attack planner / false-positive checker) uses to
+// judge and reproduce a finding.
 type Evidence struct {
-	Snippets []string `bson:"snippets" json:"snippets"`
+	Items []EvidenceItem `bson:"items,omitempty" json:"items,omitempty"` // individual matches, <= MaxEvidenceItems
+	// Request/Response describe the HTTP exchange the match actually came from — NOT
+	// necessarily the finding's TargetURL. A match found in a discovered JS file the
+	// page delivered carries that JS exchange here and its URL in Location.SourceURL.
+	// probe findings usually leave these nil (best-effort, no HAR available, FR-E7).
+	Request  *RequestContext  `bson:"request,omitempty" json:"request,omitempty"`
+	Response *ResponseContext `bson:"response,omitempty" json:"response,omitempty"`
+}
+
+// Empty reports whether the evidence carries nothing to persist. Items AND both
+// contexts must be empty — so evidence that is only request/response context is
+// still sealed and survives a seal→open round trip (r20 seal-identity property).
+func (e Evidence) Empty() bool {
+	return len(e.Items) == 0 && e.Request == nil && e.Response == nil
+}
+
+// SnippetStrings returns each item's snippet, in order — the plain-text view of the
+// evidence (for logging/summaries and callers that only want the matched content).
+func (e Evidence) SnippetStrings() []string {
+	if len(e.Items) == 0 {
+		return nil
+	}
+	out := make([]string, len(e.Items))
+	for i, it := range e.Items {
+		out[i] = it.Snippet
+	}
+	return out
+}
+
+// EvidenceOf builds evidence from bare snippet strings — for producers that only
+// have matched text (no location/context) and for tests. Structured capture
+// (location, rule, request/response) is set by the checkers directly.
+func EvidenceOf(snippets ...string) Evidence {
+	if len(snippets) == 0 {
+		return Evidence{}
+	}
+	items := make([]EvidenceItem, len(snippets))
+	for i, s := range snippets {
+		items[i] = EvidenceItem{Snippet: s}
+	}
+	return Evidence{Items: items}
+}
+
+// EvidenceItem is one matched piece of evidence.
+type EvidenceItem struct {
+	Snippet    string   `bson:"snippet" json:"snippet"`                           // the actual matched content, bounded + redacted
+	Location   Location `bson:"location,omitempty" json:"location,omitempty"`     // where the match sits (FR-E2)
+	Rule       string   `bson:"rule,omitempty" json:"rule,omitempty"`             // firing signature/rule id (FR-E3)
+	Hypothesis string   `bson:"hypothesis,omitempty" json:"hypothesis,omitempty"` // what the rule detects — the AI's starting hypothesis (FR-E3)
+}
+
+// MatchPart names the part of the HTTP exchange a match sits in.
+type MatchPart string
+
+const (
+	PartHeader MatchPart = "header"
+	PartBody   MatchPart = "body"
+	PartCookie MatchPart = "cookie"
+	PartURL    MatchPart = "url"
+)
+
+// Location says where in the exchange a match sits, so a consumer can separate the
+// matched token from its surrounding context and re-fetch it. Offset/MatchLen index
+// the ORIGINAL (pre-whitespace-collapse) body of the SourceURL exchange when set,
+// else the finding's primary response body; they are meaningful only for PartBody.
+type Location struct {
+	Part      MatchPart `bson:"part,omitempty" json:"part,omitempty"`
+	Name      string    `bson:"name,omitempty" json:"name,omitempty"`           // header/cookie name (PartHeader|PartCookie)
+	Offset    int       `bson:"offset,omitempty" json:"offset,omitempty"`       // byte offset in the body (PartBody)
+	MatchLen  int       `bson:"matchLen,omitempty" json:"matchLen,omitempty"`   // matched length in bytes at Offset (PartBody)
+	SourceURL string    `bson:"sourceUrl,omitempty" json:"sourceUrl,omitempty"` // set only when the match came from a URL != the finding's TargetURL (e.g. discovered JS)
+}
+
+// RequestContext is the reproduction/pivot entry point for a downstream consumer
+// (FR-E4). The passive fetcher always issues a plain GET with a fixed minimal
+// header set, so Headers is normally omitted (nothing informative to record) —
+// Method+URL is the reproduction key; omission is honest, never fabricated (D5).
+type RequestContext struct {
+	Method  string   `bson:"method,omitempty" json:"method,omitempty"`
+	URL     string   `bson:"url,omitempty" json:"url,omitempty"`
+	Headers []Header `bson:"headers,omitempty" json:"headers,omitempty"`
+}
+
+// ResponseContext is the false-positive/reproduction context for a match (FR-E5).
+// Headers is a bounded, deterministic allowlist — never the full header set.
+type ResponseContext struct {
+	Status      int      `bson:"status,omitempty" json:"status,omitempty"`
+	ContentType string   `bson:"contentType,omitempty" json:"contentType,omitempty"`
+	Headers     []Header `bson:"headers,omitempty" json:"headers,omitempty"`
+	Truncated   bool     `bson:"truncated,omitempty" json:"truncated,omitempty"`
 }
 
 // Finding is the unit a checker emits — keyed by CWE and framework-agnostic

@@ -48,8 +48,8 @@ func TestNormalize_EvidenceBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(f.Evidence.Snippets) != domain.MaxEvidenceSnippets {
-		t.Errorf("evidence not bounded: %d", len(f.Evidence.Snippets))
+	if len(f.Evidence.SnippetStrings()) != domain.MaxEvidenceItems {
+		t.Errorf("evidence not bounded: %d", len(f.Evidence.SnippetStrings()))
 	}
 }
 

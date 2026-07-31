@@ -29,13 +29,13 @@ type Normalizer interface {
 }
 
 type normalizer struct {
-	sev         severity.Mapper
-	maxSnippets int
+	sev      severity.Mapper
+	maxItems int
 }
 
 // New builds a Normalizer.
 func New(sev severity.Mapper) Normalizer {
-	return &normalizer{sev: sev, maxSnippets: domain.MaxEvidenceSnippets}
+	return &normalizer{sev: sev, maxItems: domain.MaxEvidenceItems}
 }
 
 func (n *normalizer) Normalize(raw RawFinding) (domain.Finding, error) {
@@ -44,12 +44,27 @@ func (n *normalizer) Normalize(raw RawFinding) (domain.Finding, error) {
 		TargetURL:  raw.TargetURL,
 		SourceTool: raw.SourceTool,
 		Severity:   n.sev.Map(raw.RawSeverity, raw.SourceTool),
-		Evidence:   domain.Evidence{Snippets: bound(raw.Evidence, n.maxSnippets)},
+		// Pre-structured path: a raw string becomes a bare-snippet item (no location/
+		// rule) — the honest minimum for an adapter that only produced text. Structured
+		// capture (location/rule/context) lives in the checkers themselves (r20).
+		Evidence: domain.Evidence{Items: bound(itemsOf(raw.Evidence), n.maxItems)},
 	}
 	if err := f.Validate(); err != nil {
 		return domain.Finding{}, err
 	}
 	return f, nil
+}
+
+// itemsOf lifts raw evidence strings into bare-snippet items.
+func itemsOf(snips []string) []domain.EvidenceItem {
+	if len(snips) == 0 {
+		return nil
+	}
+	out := make([]domain.EvidenceItem, 0, len(snips))
+	for _, s := range snips {
+		out = append(out, domain.EvidenceItem{Snippet: s})
+	}
+	return out
 }
 
 func (n *normalizer) NormalizeAll(raws []RawFinding) ([]domain.Finding, int) {
@@ -66,10 +81,10 @@ func (n *normalizer) NormalizeAll(raws []RawFinding) ([]domain.Finding, int) {
 	return out, dropped
 }
 
-// bound truncates evidence snippets to the limit (FR-12/R9). Fresh slice.
-func bound(snips []string, max int) []string {
-	if len(snips) <= max {
-		return append([]string(nil), snips...)
+// bound truncates evidence items to the limit (FR-12/R9). Fresh slice.
+func bound(items []domain.EvidenceItem, max int) []domain.EvidenceItem {
+	if len(items) <= max {
+		return append([]domain.EvidenceItem(nil), items...)
 	}
-	return append([]string(nil), snips[:max]...)
+	return append([]domain.EvidenceItem(nil), items[:max]...)
 }

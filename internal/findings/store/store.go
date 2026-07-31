@@ -65,18 +65,18 @@ func keepExistingEvidence(incoming, stored []domain.Finding) []domain.Finding {
 	if len(stored) == 0 {
 		return incoming
 	}
-	have := make(map[domain.FindingKey][]string, len(stored))
+	have := make(map[domain.FindingKey]domain.Evidence, len(stored))
 	for _, f := range stored {
-		if len(f.Evidence.Snippets) > 0 {
-			have[f.Key()] = f.Evidence.Snippets
+		if !f.Evidence.Empty() {
+			have[f.Key()] = f.Evidence
 		}
 	}
 	for i := range incoming {
-		if len(incoming[i].Evidence.Snippets) > 0 {
+		if !incoming[i].Evidence.Empty() {
 			continue
 		}
-		if snips, ok := have[incoming[i].Key()]; ok {
-			incoming[i].Evidence.Snippets = snips
+		if ev, ok := have[incoming[i].Key()]; ok {
+			incoming[i].Evidence = ev
 		}
 	}
 	return incoming
@@ -98,8 +98,28 @@ func cloneFindings(in []domain.Finding) []domain.Finding {
 	out := make([]domain.Finding, len(in))
 	for i, f := range in {
 		f.CWEs = append([]domain.CWE(nil), f.CWEs...)
-		f.Evidence.Snippets = append([]string(nil), f.Evidence.Snippets...)
+		f.Evidence = cloneEvidence(f.Evidence)
 		out[i] = f
+	}
+	return out
+}
+
+// cloneEvidence deep-copies the structured evidence so no slice/pointer is shared
+// with the caller (the same aliasing contract the durable stores get by serializing).
+func cloneEvidence(e domain.Evidence) domain.Evidence {
+	out := domain.Evidence{}
+	if len(e.Items) > 0 {
+		out.Items = append([]domain.EvidenceItem(nil), e.Items...)
+	}
+	if e.Request != nil {
+		r := *e.Request
+		r.Headers = append([]domain.Header(nil), e.Request.Headers...)
+		out.Request = &r
+	}
+	if e.Response != nil {
+		r := *e.Response
+		r.Headers = append([]domain.Header(nil), e.Response.Headers...)
+		out.Response = &r
 	}
 	return out
 }

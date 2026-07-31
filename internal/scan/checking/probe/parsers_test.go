@@ -40,8 +40,8 @@ func assertValid(t *testing.T, fs []domain.Finding, wantTool string) {
 		if len(f.CWEs) != 1 {
 			t.Errorf("%s: probe finding must own exactly 1 CWE, got %v", wantTool, f.CWEs)
 		}
-		if len(f.Evidence.Snippets) > domain.MaxEvidenceSnippets {
-			t.Errorf("%s: evidence snippets %d exceed bound %d", wantTool, len(f.Evidence.Snippets), domain.MaxEvidenceSnippets)
+		if len(f.Evidence.SnippetStrings()) > domain.MaxEvidenceItems {
+			t.Errorf("%s: evidence snippets %d exceed bound %d", wantTool, len(f.Evidence.SnippetStrings()), domain.MaxEvidenceItems)
 		}
 	}
 }

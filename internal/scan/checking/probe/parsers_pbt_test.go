@@ -37,8 +37,8 @@ func TestParsers_Property_OwnedCWEOnly(t *testing.T) {
 			if f.SourceTool != tool {
 				t.Fatalf("%s: sourceTool=%q, want %q", tool, f.SourceTool, tool)
 			}
-			if len(f.Evidence.Snippets) > domain.MaxEvidenceSnippets {
-				t.Fatalf("%s: evidence unbounded %d", tool, len(f.Evidence.Snippets))
+			if len(f.Evidence.SnippetStrings()) > domain.MaxEvidenceItems {
+				t.Fatalf("%s: evidence unbounded %d", tool, len(f.Evidence.SnippetStrings()))
 			}
 		}
 	}
