@@ -5,6 +5,45 @@
 
 The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Below is what MUST happen before the durable backends run in production, and the honest limitations carried forward.
 
+## Increment log — Evidence 강화: 구조화 스키마 (r20, 2026-07-31)
+
+**Scope:** `domain.Evidence{Snippets []string}` → 구조화 Evidence(매치 위치 · 룰/가설 ·
+요청/응답 컨텍스트)로 교체해 다운스트림 AI(능동 공격 플래너 + 정오탐 체커)가 finding당 근거를
+기계 판독. observation 완전 채움, probe best-effort(날조 금지), 스키마 교체(마이그레이션 없음),
+`/report` findingDTO 확장.
+
+**Kernel-panic 복구:** 코드 생성이 다중 panic으로 중단됐으나, 재개 시 코드+테스트가 이미
+완성돼 있고 전 게이트 green임을 검증으로 확인(플랜 A~I 누락 없음). 유실된 것은 추적 상태
+(체크박스·audit)뿐 → 복원.
+
+**코드 리뷰(workflow high) — 6건 수정 (data-loss 2건 포함):**
+- 🔴 `taskstore_mongo.go` / 🟠 `store_mongo.go` — decrypt 성공 후 unmarshal 실패 시 evidence를
+  무언 소실(resume/read data loss). **강등을 구 `[]string` 스키마로만 한정**하고 그 외 손상은
+  에러로 표면화. 회귀 테스트 4개(강등 vs 손상) 추가.
+- 🟠 `report_view.go` — `locationDTO.Offset` omitempty가 byte-0 매치를 wire에서 삭제 → 제거.
+- 🟠 `contract_test.go` — no-alias 테스트가 `SnippetStrings()`(fresh slice) 변경으로 무의미화 →
+  `Items` 직접 변경으로 deep-copy 불변 재활성.
+- ⚪ `signatures.go` content-type 중복 · ⚪ `report_ui.go` 미정의 CSS 배지.
+
+**게이트(로컬):** build/vet(+integration 태그)·gofmt·arch-check·`go test ./...`(23 pkg)·
+`-race`·**gosec pinned 0**·**secrets no leaks**·coverage 56.9%. Integration 스위트(testcontainers)
+는 Docker 위임(#1과 동일). PBT FULL: 경계·멱등·probe 날조없음·seal 왕복 항등 + 강등/손상 구분.
+
+**Security-baseline(blocking) 준수:** evidence 필드별 상한(MaxEvidenceItems=8, MaxEvidenceHeaders=12,
+헤더 값 클립) · at-rest 암호화(crypto.Envelope seal, AAD 바인딩 불변) · 응답 헤더 결정적 allowlist ·
+요청 헤더 정직 생략(fetcher 미기록 필드는 날조 안 함).
+
+**불변:** 26-파티션 · checker↔CWE 소유권 · probe 정직성(unwired→tool-failed) · 안전봉투 ·
+제품 Dockerfile · platform seam · **신규 의존성 0**.
+
+**커밋:** `8f0f498`(feat) · `564285b`(docs) · `071ad94`(B&T summary).
+요약: `construction/build-and-test/evidence-build-and-test-summary.md`.
+
+**남은 최상위 갭(이월):** 발견/서브도메인 스코프(사람 DAST 대비 최대 갭) · changeme/PS-019(r19 조사
+종결, stub 유지 or Option C).
+
+---
+
 ## Increment log — subzy fingerprints DB provisioning (#0e, r18, 2026-07-29)
 
 > **CLOSED (green, Build & Test approved 2026-07-29).** Closes #0e: subzy (PS-025 subdomain takeover)

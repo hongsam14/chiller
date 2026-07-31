@@ -59,6 +59,9 @@ Q8=B propose IR+COE.
 ## ✅ CLOSED Increment (2026-07-15) — Probe 파서 실측 (#0d, r8)
 Docker 실검증: chiller 이미지로 Juice Shop + **kblife-clone.com(실 HTTPS)** 스캔 → humble이 HSTS(CWE-319)·**clickjacking(CWE-1021)** 실 finding 산출(재작성 전 0개), corsy CORS 실 finding, testssl HTTPS 실행(TLS 양호), 쿠키 소유권 이전 정상(Set-Cookie 없는 페이지 N/A), 26 파티션·정직성 유지. Build&Test(로컬 green)·Operations(production-readiness #0d partial-DONE) 마감. 다음: testssl/dirhunt/subzy positive 실측(취약 대상 확보 시).
 
+## ✅ CLOSED Increment (2026-07-31) — Evidence 강화: 구조화 스키마 (r20)
+**전 AI-DLC 단계 완료.** Requirements(명확화: evidence는 고객 UI가 아니라 다운스트림 AI 기계판독 근거 — 능동 공격 플래너+정오탐 체커; 매치위치·룰/가설·요청/응답 컨텍스트 4개 전부, 스키마 교체, DTO 확장) → Workflow Planning(EXECUTE 4/SKIP 6, Risk=Medium) → Functional Design(자기검증 F1~F4 교정) → Code Gen P1(자기검증 PD-A/PD-B 교정) → **Code Gen P2(kernel-panic 다중 중단 → 재개 검증: 코드+테스트 이미 완성·전 게이트 green, 플랜 A~I 누락 없음)** → **코드리뷰(workflow high, 16에이전트→6확정, data-loss 2건 포함 전부 수정+회귀)** → Build&Test(로컬 전 게이트 green) → Operations 도달. 커밋 `8f0f498`(feat)·`564285b`(docs)·`071ad94`(B&T) on feat/evidence-enrichment. **핵심**: `domain.Evidence{Snippets []string}`→`Evidence{Items []EvidenceItem{Snippet,Location,Rule,Hypothesis}, Request*, Response*}`. observation 완전 채움(findingAt가 소스교환 스레딩, matchContext offset/len, 13 시그니처 Location/Rule/Hypothesis, JS는 Location.SourceURL), probe best-effort(pFinding+hypothesisFor, Location/Req/Resp 날조금지 omitempty). seal/open은 전체 구조 직렬화(store EvidenceAAD + taskstore LedgerEvidenceAAD, Empty 게이트, **구 []string만 강등·그 외 손상은 에러**). **리뷰 최심각 F1/F2**(decrypt 후 unmarshal 실패 evidence 무언 소실→구 스키마 한정 강등). 리포트 findingDTO 구조화 + report_ui ev.snippet(bare-string 버그 수정). PBT FULL(경계·멱등·probe날조없음·seal왕복항등·강등vs손상·F1 JS회귀). 26-파티션·소유권·probe정직성·seam·**신규dep0** 불변. 남은 최상위 갭: 발견/서브도메인 스코프·changeme(PS-019).
+
 ## ✅ CLOSED Increment (2026-07-29) — subzy fingerprints DB provisioning (#0e, r18)
 **전 AI-DLC 단계 완료.** Requirements(Q1~3 → 사용자 정정으로 operator-provision, Rationale 절 추가) → Workflow Planning → Infrastructure Design(코드젠 스모크가 Q2-A --vuln_list 없음 발견 → Q2-B HOME 전환) → Code Gen(P1+P2, 플랜 리뷰 P1~5 반영) → 코드리뷰(8건, 6수정/1검증/1스킵) → Build&Test(전 게이트 green + in-image A/B/C) → Operations 도달. 커밋 예정 on feat/subzy-db. **PS-025 살아남**: subzy v1.1.0는 fingerprint 플래그 없음 → `$HOME/subzy/fingerprints.json` 읽음. `make subzy-db`(pinned 5bd4e12 EdOverflow)가 git-ignored deploy/subzy/에 provision, operator가 /opt/subzy에 ro 마운트, 어댑터가 HOME=/opt로 실행. **정직성 subzy와 분리**: precheck가 subzy 읽는 정확한 파일이 present·non-dir·non-empty JSON 배열 아니면 tool-failed(false-clean 원천차단). 리뷰 최심각 F1(guard가 subzy 읽는 경로와 다른 리터럴 검사→false-clean) 수정. 데이터 미커밋(operator-provisioning 철학). 남은 detection 갭: changeme(PS-019)·발견/서브도메인 스코프. probe 인터페이스·파서(r9)·26 파티션·하드닝 불변.
 
@@ -197,8 +200,9 @@ Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP 
 - ⬜ **§4 PlaywrightDiscoverer** — 동적 주입 JS 발견(정적 `<script src>` 파서가 놓치는 것). `hasPasswordField` SPA 오탐의 실제 해법.
 - ⬜ **§5 OTel(ProgressReporter)·OIDC/mTLS(Authorizer)** — seam 존재, 옆에 구현체 추가.
 
-### 📌 AI-DLC 진행 상태 (2026-07-29)
+### 📌 AI-DLC 진행 상태 (2026-07-31)
 - ✅ **r7~r17 전부 main 병합 완료**(main `71ceabe`).
+- ✅ **r20(evidence 강화) 전 단계 완료** on feat/evidence-enrichment — Requirements→Workflow Planning→FD(자기검증)→Code Gen(P1 자기검증 + P2 kernel-panic 재개검증)→코드리뷰(high 6수정)→Build&Test(로컬 green)→Operations 도달. 커밋 `8f0f498`/`564285b`/`071ad94`. PR/병합 대기. 구조화 Evidence로 다운스트림 AI 기계판독 근거 제공. data-loss 리뷰 2건 수정(구 스키마만 강등).
 - ✅ **r18(subzy DB #0e) 전 단계 완료** on feat/subzy-db — Operations 도달, PR/병합 대기(PR #26).
 - ✅ **r19(changeme/PS-019) 조사 종결** on feat/changeme-wiring — Requirements(제한적 배선 + N/A applicability + well-known B 커버리지) → Workflow Planning → Functional Design(applicable 훅·well-known login 마커) → Code Gen P1(플랜+근거리뷰 F1~F7) → **Code Gen P2 Step 0 조기 스모크에서 STOP&REPORT**(telnetlib py3.13+ 부적합 + ~1GB). 사용자 결정=**stub 유지(정직 바닥)**. **코드 변경 0**(주석만: adapters.go/Dockerfile의 부정확한 "Python2 heritage" → 스모크-검증된 실제 이유로 정정). 다음: 발견/서브도메인 스코프 or Option C(자체 경량 PS-019 체크).
 
