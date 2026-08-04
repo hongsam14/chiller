@@ -36,5 +36,13 @@ func WellKnownPaths() []WellKnownPath {
 		{"/v3/api-docs", cweAdmin}, {"/v2/api-docs", cweAdmin}, {"/api-docs", cweAdmin},
 		{"/swagger.json", cweAdmin}, {"/openapi.json", cweAdmin}, {"/swagger-ui.html", cweAdmin},
 		{"/actuator", cweAdmin},
+		// PS-013 (r21) — product-exposure surfaces, so the exposures branch of
+		// adminPageSig can catch them proactively (marker-confirmed, no crawling).
+		// /actuator/health is intentionally omitted: a healthy `{"status":"UP"}` body
+		// carries no distilled marker, so its owning signature could never fire.
+		{"/actuator/env", cweAdmin},
+		{"/phpinfo.php", cweAdmin}, {"/server-status", cweAdmin}, {"/server-info", cweAdmin},
+		// PS-010 (r21) — .DS_Store directory-index artifact (folded into CWE-527).
+		{"/.DS_Store", cweGit},
 	}
 }

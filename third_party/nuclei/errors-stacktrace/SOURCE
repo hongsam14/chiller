@@ -1,0 +1,5 @@
+repo: https://github.com/projectdiscovery/nuclei-templates
+files: http/misconfiguration/laravel-debug-error.yaml, http/misconfiguration/debug/flask-werkzeug-debug.yaml, http/technologies/werkzeug-debugger-detect.yaml, http/exposures/logs/rails-debug-mode.yaml
+commit: 9419e84b01ba4a591a2396b5ed490eaa8f83c18a
+license: MIT
+note: framework stack-trace / debug-console error pages -> configs/signatures/error-disclosure.yaml stackTrace[] (PS-006/CWE-209).

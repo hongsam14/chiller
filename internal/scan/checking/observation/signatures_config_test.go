@@ -24,6 +24,8 @@ func validSet(t *testing.T, dir string) {
 	writeFile(t, dir, "url-sensitive.yaml", "params: [token]\n")
 	writeFile(t, dir, "internal-disclosure.yaml", "rfc1918: '10\\.0\\.0\\.1'\nec2Host: 'x'\nnonProdHosts: 'y'\n")
 	writeFile(t, dir, "api-docs.yaml", "paths: [/swagger.json]\nbodyMarkers: [openapi]\n")
+	writeFile(t, dir, "exposures.yaml", "paths: [/actuator/env]\nmarkers: [activeProfiles]\n")
+	writeFile(t, dir, "error-disclosure.yaml", "stackTrace: ['Traceback \\(most recent call last\\)']\nerrorInfo: ['Whitelabel Error Page']\n")
 }
 
 func TestLoadRules_FailClosed(t *testing.T) {

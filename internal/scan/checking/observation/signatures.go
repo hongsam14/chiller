@@ -1,6 +1,7 @@
 package observation
 
 import (
+	"bytes"
 	"net/url"
 	"regexp"
 	"slices"
@@ -29,6 +30,15 @@ const (
 	cweCookieSecure   domain.CWE = "CWE-614"  // PS-015 (Secure)
 	cweCookieHTTPOnly domain.CWE = "CWE-1004" // PS-016 (HttpOnly)
 	cweCookieSameSite domain.CWE = "CWE-1275" // PS-017 (SameSite)
+	// Promoted from Nuclei delegation to observation-native (r21). Distinct owning
+	// CWEs (one-CWE-one-owner): stack trace is the archetypal CWE-209; the broader
+	// "error page leaks internal path/config/system info" case is CWE-497.
+	cweStackTrace domain.CWE = "CWE-209" // PS-006 (stack trace disclosure)
+	cweErrorInfo  domain.CWE = "CWE-497" // PS-005 (error page info disclosure)
+	// PII exposure (r21) — outside the KISA-26 accounting set. Its CWE maps to an
+	// EMPTY KISA projection in configs/mappings/kisa.yaml, so it clears the boot
+	// totality check (KnownCWE) without being counted against any PS item.
+	cwePII domain.CWE = "CWE-359" // personal information exposure (26-외)
 )
 
 // hypotheses maps each owned CWE to the short "what this rule detects" line the
@@ -47,6 +57,9 @@ var hypotheses = map[domain.CWE]string{
 	cweCookieSecure:   "cookie missing the Secure flag",
 	cweCookieHTTPOnly: "cookie missing the HttpOnly flag",
 	cweCookieSameSite: "cookie with weak/absent SameSite",
+	cweStackTrace:     "runtime stack trace / debug console exposed in the response",
+	cweErrorInfo:      "error page discloses internal paths, config, or system info",
+	cwePII:            "personal information (resident-id/email/phone) exposed in the response",
 }
 
 // ruleID is the firing rule identity (FR-E3): "observation:CWE-N" or, for the
@@ -364,35 +377,57 @@ func (gitExposureSig) CWE() domain.CWE { return cweGit }
 // ini/docs pages, so the path guard is still required.
 var gitPath = regexp.MustCompile(`/\.git(/|$)`)
 
+// dsStorePath matches a macOS .DS_Store directory-index artifact (r21). Folded into
+// this signature (CWE-527, source/metadata disclosure) rather than a new one, so the
+// one-CWE-one-owner invariant holds. Confirmed by the Bud1 magic below, not the path.
+var dsStorePath = regexp.MustCompile(`/\.DS_Store$`)
+
 func (gitExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
 	if ctx.Response == nil || ctx.Response.Status != 200 {
 		return nil, false, nil
 	}
-	if !gitPath.MatchString(pathOf(ctx.Target.URL)) {
-		return nil, true, nil // not a .git endpoint → N/A for this target
-	}
-	// config → "[core]"; HEAD → "ref: refs/". Either confirms real git metadata.
-	// The body is a tiny .git artifact, so the whole (bounded) body is the evidence;
-	// Location.Offset still points at the confirming marker so a consumer can anchor.
+	path := pathOf(ctx.Target.URL)
 	body := ctx.Response.Body
-	b := string(body)
-	off := -1
 	switch {
-	case strings.HasPrefix(b, "ref: refs/"):
-		off = 0
-	case strings.Contains(b, "[core]"):
-		off = strings.Index(b, "[core]")
-	}
-	if off >= 0 {
-		item := domain.EvidenceItem{
-			Snippet:    snippet(body),
-			Location:   domain.Location{Part: domain.PartBody, Offset: off},
-			Rule:       ruleID(cweGit, "git-exposure"),
-			Hypothesis: hypotheses[cweGit],
+	case gitPath.MatchString(path):
+		// config → "[core]"; HEAD → "ref: refs/". Either confirms real git metadata.
+		// The body is a tiny .git artifact, so the whole (bounded) body is the evidence;
+		// Location.Offset still points at the confirming marker so a consumer can anchor.
+		b := string(body)
+		off := -1
+		switch {
+		case strings.HasPrefix(b, "ref: refs/"):
+			off = 0
+		case strings.Contains(b, "[core]"):
+			off = strings.Index(b, "[core]")
 		}
-		return []domain.Finding{findingAt(cweGit, domain.SevHigh, ctx.Target.URL, ctx.Response, item)}, false, nil
+		if off >= 0 {
+			item := domain.EvidenceItem{
+				Snippet:    snippet(body),
+				Location:   domain.Location{Part: domain.PartBody, Offset: off},
+				Rule:       ruleID(cweGit, "git-exposure"),
+				Hypothesis: hypotheses[cweGit],
+			}
+			return []domain.Finding{findingAt(cweGit, domain.SevHigh, ctx.Target.URL, ctx.Response, item)}, false, nil
+		}
+		return nil, false, nil
+	case dsStorePath.MatchString(path):
+		// .DS_Store magic: 4-byte alignment header \x00\x00\x00\x01 followed by the
+		// "Bud1" buddy-allocator signature at offset 4. Both confirm a real artifact
+		// (an HTML soft-404 can never match), so no not-HTML heuristic is needed.
+		if len(body) >= 8 && bytes.HasPrefix(body, []byte("\x00\x00\x00\x01")) && bytes.Equal(body[4:8], []byte("Bud1")) {
+			item := domain.EvidenceItem{
+				Snippet:    "accessible .DS_Store (directory index): " + path,
+				Location:   domain.Location{Part: domain.PartBody, Offset: 4},
+				Rule:       ruleID(cweGit, "dsstore-exposure"),
+				Hypothesis: ".DS_Store discloses directory structure / filenames",
+			}
+			return []domain.Finding{findingAt(cweGit, domain.SevMedium, ctx.Target.URL, ctx.Response, item)}, false, nil
+		}
+		return nil, false, nil
+	default:
+		return nil, true, nil // neither a .git nor .DS_Store endpoint → N/A for this target
 	}
-	return nil, false, nil
 }
 
 // ---- PS-011: .env exposure ----
@@ -591,16 +626,59 @@ var backupName = regexp.MustCompile(`(?i)(` +
 	`|(^|/)([\w.-]*[-_.])?(bak|db|www|site)([-_.][\w.-]*)?\.` + backupArchiveExt + `$` + // short keyword as a bounded token
 	`)`)
 
+// looksLikeArchive reports whether a response body BEGINS with an archive/database
+// magic signature — the r21 content confirmation (distilled from recon's backup
+// `_verify`). A leading magic proves the body really is an archive, so it is checked
+// only at the start (a magic string occurring mid-body is coincidence, not a header).
+func looksLikeArchive(body []byte) (kind string, ok bool) {
+	switch {
+	case bytes.HasPrefix(body, []byte("PK\x03\x04")), bytes.HasPrefix(body, []byte("PK\x05\x06")):
+		return "zip", true
+	case bytes.HasPrefix(body, []byte("SQLite format 3\x00")):
+		return "sqlite", true
+	case bytes.HasPrefix(body, []byte("\x1f\x8b")):
+		return "gzip", true
+	case bytes.HasPrefix(body, []byte("7z\xbc\xaf\x27\x1c")):
+		return "7z", true
+	case bytes.HasPrefix(body, []byte("Rar!\x1a\x07")):
+		return "rar", true
+	}
+	// SQL dumps are text; a leading `-- <Engine> dump` comment is their conventional
+	// header. Trim leading space, lowercase a small prefix window only.
+	head := strings.ToLower(strings.TrimLeft(string(body[:min(len(body), 64)]), " \t\r\n"))
+	for _, p := range []string{"-- mysql dump", "-- mysql database dump", "-- postgresql database dump", "-- mariadb dump", "-- sql dump"} {
+		if strings.HasPrefix(head, p) {
+			return "sqldump", true
+		}
+	}
+	return "", false
+}
+
 func (backupFileSig) CWE() domain.CWE { return cweBackup }
 func (backupFileSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
 	if ctx.Response == nil || ctx.Response.Status != 200 {
 		return nil, false, nil
 	}
-	// A real backup archive is not served as an HTML page. A soft-404 site that
-	// answers /backup.zip with 200 + its homepage HTML would otherwise let the
-	// engine fabricate a High from its own synthesized request — require the body
-	// to NOT look like HTML before reporting (r10 FP-narrow).
-	if backupName.MatchString(pathOf(ctx.Target.URL)) && !looksLikeHTML(ctx.Response) {
+	// A backup-NAMED path is the gate (r21, PD-A): magic is a false-positive REDUCER,
+	// not a standalone trigger — firing on archive magic ALONE would flag every legit
+	// `.zip` download asset. So the path must look like a backup either way.
+	if !backupName.MatchString(pathOf(ctx.Target.URL)) {
+		return nil, false, nil
+	}
+	// Archive magic CONFIRMS it is a real backup (replaces the weaker not-HTML
+	// heuristic and its soft-404 false positives). A confirmed archive fires High.
+	if kind, ok := looksLikeArchive(ctx.Response.Body); ok {
+		item := domain.EvidenceItem{
+			Snippet:    "accessible backup archive (" + kind + "): " + pathOf(ctx.Target.URL),
+			Location:   domain.Location{Part: domain.PartBody, Offset: 0},
+			Rule:       ruleID(cweBackup, "backup-magic"),
+			Hypothesis: hypotheses[cweBackup],
+		}
+		return []domain.Finding{findingAt(cweBackup, domain.SevHigh, ctx.Target.URL, ctx.Response, item)}, false, nil
+	}
+	// Legacy path (backward compatible): backup-named + not HTML (a soft-404 site that
+	// answers /backup.zip with its homepage HTML is excluded by the HTML check).
+	if !looksLikeHTML(ctx.Response) {
 		item := domain.EvidenceItem{
 			Snippet:    "accessible backup file: " + pathOf(ctx.Target.URL),
 			Location:   domain.Location{Part: domain.PartURL},
@@ -612,8 +690,12 @@ func (backupFileSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, erro
 	return nil, false, nil
 }
 
-// ---- PS-013: admin page publicly accessible (+ exposed API docs, r16) ----
-type adminPageSig struct{ apiDocs APIDocRules }
+// ---- PS-013: admin page publicly accessible (+ exposed API docs r16, + product
+// exposures r21: Spring Boot actuator/env, phpinfo, Apache server-status) ----
+type adminPageSig struct {
+	apiDocs   APIDocRules
+	exposures ExposureRules
+}
 
 // adminPath is broadened (r10 FN) to the common admin surfaces.
 var adminPath = regexp.MustCompile(`(?i)/(admin|administrator|administration|manage|manager/html|wp-admin|phpmyadmin|dashboard|backend)(/|$)`)
@@ -658,6 +740,18 @@ func (s adminPageSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 				Snippet:    data,
 				Location:   domain.Location{Part: domain.PartBody, Offset: off, MatchLen: mlen},
 				Rule:       ruleID(cweAdmin, "api-docs"),
+				Hypothesis: hypotheses[cweAdmin],
+			}
+			return []domain.Finding{findingAt(cweAdmin, domain.SevMedium, ctx.Target.URL, ctx.Response, item)}, false, nil
+		}
+		// r21: an exposed product/management surface (actuator/env, phpinfo, Apache
+		// server-status) is a management-surface exposure under the same owning CWE.
+		// A body marker is required (soft-404 FP guard), same as the api-docs branch.
+		if data, off, mlen, ok := s.exposures.match(path, ctx.Response.Body); ok {
+			item := domain.EvidenceItem{
+				Snippet:    data,
+				Location:   domain.Location{Part: domain.PartBody, Offset: off, MatchLen: mlen},
+				Rule:       ruleID(cweAdmin, "product-exposure"),
 				Hypothesis: hypotheses[cweAdmin],
 			}
 			return []domain.Finding{findingAt(cweAdmin, domain.SevMedium, ctx.Target.URL, ctx.Response, item)}, false, nil
@@ -812,6 +906,139 @@ func (cookieSameSiteSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 		return cookieFinding(cweCookieSameSite, ctx.Target.URL, "cookie with weak SameSite (missing or None)", first, n, ctx.Response), false, nil
 	}
 	return nil, false, nil
+}
+
+// firstMatch returns the first rule's match location in body, or nil. A nil/empty
+// rule set yields nil (the config-driven signatures are safe with no rules loaded).
+func firstMatch(body []byte, rules []*regexp.Regexp) []int {
+	for _, re := range rules {
+		if loc := re.FindIndex(body); loc != nil {
+			return loc
+		}
+	}
+	return nil
+}
+
+// bodyMarkerSig judges the fetched response body against a set of RE2 markers and,
+// on the first match, emits one Medium finding for its owning CWE. It backs the two
+// r21 error-disclosure signatures (distinct instances keep one-CWE-one-owner):
+//   - PS-006 / CWE-209 stack trace — nuclei framework-debug pages + curated recon
+//     runtime frame regexes (error-disclosure.yaml stackTrace[]).
+//   - PS-005 / CWE-497 error page info — nuclei verbose-error/debug-mode markers
+//     (error-disclosure.yaml errorInfo[]).
+//
+// Passive: it inspects the already-fetched body only — no active error triggering.
+// A nil/empty rule set is safe (firstMatch returns nil → clean).
+type bodyMarkerSig struct {
+	cwe   domain.CWE
+	sub   string
+	rules []*regexp.Regexp
+}
+
+func (s bodyMarkerSig) CWE() domain.CWE { return s.cwe }
+func (s bodyMarkerSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
+	if ctx.Response == nil {
+		return nil, false, nil
+	}
+	if loc := firstMatch(ctx.Response.Body, s.rules); loc != nil {
+		item := bodyItemAt(ctx.Response.Body, loc[0], loc[1], 24, ruleID(s.cwe, s.sub), hypotheses[s.cwe])
+		return []domain.Finding{findingAt(s.cwe, domain.SevMedium, ctx.Target.URL, ctx.Response, item)}, false, nil
+	}
+	return nil, false, nil
+}
+
+// ---- PII exposure (r21, 26-외, CWE-359) ----
+// Inline RE2 (provenance: curated patterns patterns). Field-
+// key-anchored (never a bare value) so a random digit run or `userType` cannot fire.
+// The resident-id form carries a digit-boundary guard (no RE2 lookaround). The
+// exposed VALUE is masked in the evidence snippet (FR-5c) — the offset/length still
+// index the original body so a downstream consumer can re-locate the real datum.
+type piiRule struct {
+	re   *regexp.Regexp
+	kind string
+	sev  domain.Severity
+}
+
+var piiRules = []piiRule{
+	// Korean resident registration number: YYMMDD-GDDDDDD (G ∈ 1..4). Bare form, so
+	// Judge applies a digit-boundary guard AND a YYMMDD birthdate-validity check
+	// (residentIDValid) to reject ordinary formatted ids like an invoice `202401-…`.
+	{regexp.MustCompile(`\d{6}-[1-4]\d{6}`), "resident-id", domain.SevHigh},
+	// National-ID / passport / SSN JSON field.
+	{regexp.MustCompile(`(?i)"(?:ssn|social_security_number|national_?id|passport|resident_?id)"\s*:\s*"[\w-]{6,}"`), "national-id", domain.SevHigh},
+	// Email field. The key may be a COMPOUND name (userEmail, contactEmail,
+	// emailAddress, user_email) — `[\w]*` on both sides — because the value anchor
+	// (a real `local@domain.tld`) makes a spurious key match harmless.
+	{regexp.MustCompile(`(?i)"[\w]*(?:email|e_?mail)[\w]*"\s*:\s*"[^"@\s]{2,}@[\w.-]+\.[a-z]{2,}"`), "email", domain.SevMedium},
+	// Phone field. Prefix-broadened (mobilePhone, userPhone, cellPhone) but NOT
+	// suffix-broadened, and bare `tel` is dropped — both would substring-match benign
+	// keys (telemetry/hotel) whose numeric value could look phone-shaped.
+	{regexp.MustCompile(`(?i)"[\w]*(?:phone|mobile|cellphone|telephone)"\s*:\s*"\+?\d[\d\s().-]{7,}\d"`), "phone", domain.SevMedium},
+}
+
+type piiExposureSig struct{}
+
+func (piiExposureSig) CWE() domain.CWE { return cwePII }
+func (piiExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, error) {
+	if ctx.Response == nil {
+		return nil, false, nil
+	}
+	body := ctx.Response.Body
+	for _, pr := range piiRules {
+		var loc []int
+		if pr.kind == "resident-id" {
+			// resident-id needs per-match validation, so iterate to the first valid one.
+			for _, m := range pr.re.FindAllIndex(body, -1) {
+				if residentIDValid(body, m) {
+					loc = m
+					break
+				}
+			}
+		} else {
+			loc = pr.re.FindIndex(body) // key-anchored: the first match suffices
+		}
+		if loc == nil {
+			continue
+		}
+		item := domain.EvidenceItem{
+			Snippet:    maskPII(string(body[loc[0]:loc[1]]), pr.kind),
+			Location:   domain.Location{Part: domain.PartBody, Offset: loc[0], MatchLen: loc[1] - loc[0]},
+			Rule:       ruleID(cwePII, "pii-"+pr.kind),
+			Hypothesis: hypotheses[cwePII],
+		}
+		return []domain.Finding{findingAt(cwePII, pr.sev, ctx.Target.URL, ctx.Response, item)}, false, nil
+	}
+	return nil, false, nil
+}
+
+// residentIDValid applies the digit-boundary guard (reject a match embedded in a
+// longer number) AND validates the YYMMDD birthdate prefix (month 01-12, day 01-31),
+// so an ordinary formatted id like `202401-1000042` (month "24") no longer fires.
+func residentIDValid(body []byte, loc []int) bool {
+	if (loc[0] > 0 && isDigit(body[loc[0]-1])) || (loc[1] < len(body) && isDigit(body[loc[1]])) {
+		return false
+	}
+	d := body[loc[0]:] // guaranteed ≥6 leading digits by the regex
+	mm := int(d[2]-'0')*10 + int(d[3]-'0')
+	dd := int(d[4]-'0')*10 + int(d[5]-'0')
+	return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31
+}
+
+// maskPII redacts the exposed value while preserving enough shape to prove the
+// exposure. The resident-id is fully masked; a field match keeps the JSON KEY (the
+// first quoted token) and masks the entire value — so a colon, quote, or other char
+// inside the real value can never leak into the evidence (FR-5c).
+func maskPII(s, kind string) string {
+	if kind == "resident-id" {
+		return "######-#######"
+	}
+	// s is `"key"...:..."value"`. Keep up to the key's closing quote, mask the rest.
+	if len(s) > 0 && s[0] == '"' {
+		if j := strings.IndexByte(s[1:], '"'); j >= 0 {
+			return s[:j+2] + `: "***"`
+		}
+	}
+	return "***"
 }
 
 // pathOf returns the URL path only (no query), so suffix anchors like `.bak$`

@@ -62,7 +62,15 @@ func TestCoverageWiring_RealConfig_BootPasses(t *testing.T) {
 	if cov["PS-014"].Status != domain.StatusDelegated || cov["PS-014"].Target != domain.DelegateASM {
 		t.Errorf("PS-014 should be Delegated→ASM, got %+v", cov["PS-014"])
 	}
-	if cov["PS-005"].Target != domain.DelegateNuclei {
-		t.Errorf("PS-005 should be Delegated→Nuclei, got %+v", cov["PS-005"])
+	// r21: PS-005/006 promoted from Nuclei delegation to observation-native → now Checked.
+	if cov["PS-005"].Status != domain.StatusChecked {
+		t.Errorf("PS-005 should be Checked (observation-native r21), got %+v", cov["PS-005"])
+	}
+	if cov["PS-006"].Status != domain.StatusChecked {
+		t.Errorf("PS-006 should be Checked (observation-native r21), got %+v", cov["PS-006"])
+	}
+	// PS-026 remains the only Nuclei-delegated item alongside PS-014 (ASM).
+	if cov["PS-026"].Target != domain.DelegateNuclei {
+		t.Errorf("PS-026 should be Delegated→Nuclei, got %+v", cov["PS-026"])
 	}
 }

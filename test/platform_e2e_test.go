@@ -119,7 +119,13 @@ func newHarness(t *testing.T, o harnessOpts) *harness {
 
 func (h *harness) submit(t *testing.T, urls, approved []string) domain.ScanID {
 	t.Helper()
-	id, err := h.orch.CreateScan(context.Background(), ingest.ScanRequest{URLs: urls, Approved: approved})
+	// Hermetic httptest targets have no real rate concern; lift the per-host budget so
+	// the (now larger, r21) well-known sweep is not gated by token refill within the
+	// test's completion deadline — these tests measure orchestration, not rate.
+	id, err := h.orch.CreateScan(context.Background(), ingest.ScanRequest{
+		URLs: urls, Approved: approved,
+		Options: ingest.ScanOptions{RatePerHost: 5000, Burst: 5000},
+	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -234,13 +240,13 @@ func TestE2E_ProbesWithoutBinaries_ToolFailed_NotChecked(t *testing.T) {
 			na++
 		}
 	}
-	// After #0d, 9 items are probe-owned (cookie PS-015/016/017 moved to the
-	// observation engine), so 9 are unjudged here (no binaries). The 13
-	// observation-owned items (10 original + 3 cookie) were judged — each Checked
-	// or (legitimately, for this bare cookie-less target) N/A; only their sum is fixed.
-	if failed != 9 || delegated != 4 || checked+na != 13 {
+	// After #0d, 9 items are probe-owned, so 9 are unjudged here (no binaries). r21
+	// promoted PS-005/006 from Nuclei delegation to observation-native, so delegated
+	// drops 4→2 (PS-014 ASM, PS-026 Nuclei) and the observation-judged set grows
+	// 13→15 — each Checked or (legitimately, for this bare target) N/A; sum is fixed.
+	if failed != 9 || delegated != 2 || checked+na != 15 {
 		t.Errorf("honest accounting drifted: checked=%d n/a=%d tool-failed=%d delegated=%d "+
-			"(want 9 probe-owned unjudged [no binaries], 4 delegated, 13 observation judged)",
+			"(want 9 probe-owned unjudged [no binaries], 2 delegated, 15 observation judged)",
 			checked, na, failed, delegated)
 	}
 	if checked == 0 {
