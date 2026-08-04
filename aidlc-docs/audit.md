@@ -1917,3 +1917,9 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: "Approve & Continue"
 **AI Response**: Code Gen P2(코드리뷰 8수정 포함) 승인. 커밋 후 Build and Test — 전 로컬 게이트 + 코퍼스/PBT + 26-파티션/boot-totality 불변 재확인.
 **Context**: CONSTRUCTION - Code Gen P2 승인 → Build and Test(r21).
+
+## Build and Test — 로컬 게이트 green (r21)
+**Timestamp**: 2026-08-04T06:00:00Z
+**User Input**: (Code Gen P2 승인에 이어 Build and Test 진행)
+**AI Response**: r21 코드+리뷰수정 2커밋(5456a0c feat / 7eeb0c5 docs) 후 Build&Test. committed tree 전 로컬 게이트 green: build·build(integration)·vet·vet(integration)·gofmt clean·arch-check·go test ./... -race(0 FAIL/0 race)·gosec pinned(0)·secrets(84 commits no-leak, 신규 third_party/configs allowlist)·signatures-check(재생성 멱등 drift0)·lint(0)·coverage observation 85.8%. integration(testcontainers)는 Docker 위임(로컬 컴파일만). FP/FN 코퍼스+PBT(콜론값 회귀 포함)+파티션회계(boot-totality KISA+FSEC) 검증. 요약 recon-observation-build-and-test-summary.md. 불변: 26-파티션·소유권·CWE-359 회계0·FR-6·신규dep0·probe9. 승인 게이트: Operations 진행 여부.
+**Context**: CONSTRUCTION - Build and Test 완료(로컬 green), 승인 대기(r21).
