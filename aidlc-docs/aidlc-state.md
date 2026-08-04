@@ -5,7 +5,7 @@
 - **Repo**: Service-Passive-Scanner · **Module**: `github.com/enki-offen/chiller`
 - **Project Type**: Greenfield (new build), informed by a brownfield reference (`coolant`)
 - **Start Date**: 2026-07-08
-- **Current Stage**: ✅ MVP (4 units + Build&Test + Operations) **plus 11 post-MVP increments (r7→r21)** — r7→r20 merged to main (main tip `16ea471`); **r21 (recon→observation) 전 AI-DLC 단계 완료 on `feat/recon-observation`** (커밋 `5456a0c`/`7eeb0c5`/`fb5e8ab`, PR/병합 대기). 실 타겟 `lab.roronoa.kr` 검증 통과(PS-005/006 승격 end-to-end). Active follow-ups in Backlog. The detection engine is now substantively wired — see **Implementation status** below. Active follow-ups in Backlog.
+- **Current Stage**: ✅ MVP + **12 post-MVP increments (r7→r22)** — r7→r21 merged to main (r21 PR #34 merged, main tip `e632260`); **r22 (PS-005/006 Nuclei 위임 복원) 완료 on `feat/error-disclosure-passive`** (커밋 `95ffbb1`, 전 게이트 green, PR/병합 대기). r22는 r21의 PS-005/006 승격을 정직성 관점에서 되돌림(위임 복원 + 수동 신호 26-밖 유지). The detection engine is now substantively wired — see **Implementation status** below. Active follow-ups in Backlog.
 - **Driving Plan**: `aidlc-docs/inception/requirements/reference/augmentation_plan.html` — KISA 컴플라이언스 26개 항목 passive-scanner 엔진
 
 ## Implementation status (2026-07-29) — where the project actually stands

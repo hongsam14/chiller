@@ -240,13 +240,14 @@ func TestE2E_ProbesWithoutBinaries_ToolFailed_NotChecked(t *testing.T) {
 			na++
 		}
 	}
-	// After #0d, 9 items are probe-owned, so 9 are unjudged here (no binaries). r21
-	// promoted PS-005/006 from Nuclei delegation to observation-native, so delegated
-	// drops 4→2 (PS-014 ASM, PS-026 Nuclei) and the observation-judged set grows
-	// 13→15 — each Checked or (legitimately, for this bare target) N/A; sum is fixed.
-	if failed != 9 || delegated != 2 || checked+na != 15 {
+	// After #0d, 9 items are probe-owned, so 9 are unjudged here (no binaries). r22
+	// reverted PS-005/006 to Nuclei delegation (their passive signals are 26-외, not a
+	// PS verdict), so 4 items are delegated (PS-005/006 Nuclei, PS-014 ASM, PS-026
+	// Nuclei) and 13 items are observation-judged — each Checked or (for this bare
+	// target) N/A; only the sum is fixed.
+	if failed != 9 || delegated != 4 || checked+na != 13 {
 		t.Errorf("honest accounting drifted: checked=%d n/a=%d tool-failed=%d delegated=%d "+
-			"(want 9 probe-owned unjudged [no binaries], 2 delegated, 15 observation judged)",
+			"(want 9 probe-owned unjudged [no binaries], 4 delegated, 13 observation judged)",
 			checked, na, failed, delegated)
 	}
 	if checked == 0 {
