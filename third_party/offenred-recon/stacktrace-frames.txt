@@ -1,0 +1,17 @@
+# Curated language-runtime stack-frame regexes (RE2), distilled from OffenRed-AI-DAST
+# recon (stage2c_signal_patterns.py / response_signals.py). One RE2 pattern per line;
+# '#' comments and blank lines ignored. FORMAT FACTS only (public conventions), not
+# proprietary code. Fed to error-disclosure.yaml stackTrace[] (PS-006). Keep tight —
+# each must be a runtime frame shape unlikely to occur in benign prose.
+# Python traceback frame: File "<path>.py", line N
+File "[^"]+\.py", line \d+
+# Java stack frame: at pkg.Class.method(File.java:NN)
+\bat [\w.$]+\([\w ]+\.java:\d+\)
+# Node/JS V8 frame: at fn (/path/file.js:LINE:COL)
+\bat [^\n]+\([^)]+\.js:\d+:\d+\)
+# PHP stack frame: #N /path/file.php(NN):
+#\d+ /[^\s:]+\.php\(\d+\)
+# Ruby frame: path.rb:NN:in `method'
+\.rb:\d+:in [`']
+# Python traceback header (multi-frame marker)
+Traceback \(most recent call last\)

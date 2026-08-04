@@ -73,10 +73,12 @@ func TestSignatures_Anchors(t *testing.T) {
 	}
 }
 
-func TestDefault_ThirteenSignatures_DistinctCWEs(t *testing.T) {
+func TestDefault_ObservationSignatures_DistinctCWEs(t *testing.T) {
 	sigs := Default()
-	if len(sigs) != 13 { // 10 original + 3 cookie-flag sigs moved from humble (#0d)
-		t.Fatalf("want 13 observation signatures, got %d", len(sigs))
+	// 13 through r16 (10 original + 3 cookie flags) + r21: stackTrace(CWE-209/PS-006),
+	// errorInfo(CWE-497/PS-005) promoted from Nuclei, + pii(CWE-359, 26-외) = 16.
+	if len(sigs) != 16 {
+		t.Fatalf("want 16 observation signatures, got %d", len(sigs))
 	}
 	seen := map[domain.CWE]bool{}
 	for _, s := range sigs {

@@ -65,15 +65,18 @@ func New(rules Rules) []Signature {
 		plaintextLoginSig{}, // PS-003
 		robotsSensitiveSig{},
 		sensitiveCommentSig{secrets: rules.Secrets, libPaths: rules.LibraryPaths, internal: rules.Internal}, // PS-009
-		gitExposureSig{},                         // PS-010
-		envExposureSig{},                         // PS-011
-		backupFileSig{},                          // PS-012
-		adminPageSig{apiDocs: rules.APIDocs},     // PS-013
-		sessionInURLSig{params: rules.URLParams}, // PS-018
-		crossdomainSig{},                         // PS-022
-		captchaAbsenceSig{},                      // PS-023
-		cookieSecureSig{},                        // PS-015
-		cookieHTTPOnlySig{},                      // PS-016
-		cookieSameSiteSig{},                      // PS-017
+		gitExposureSig{}, // PS-010
+		envExposureSig{}, // PS-011
+		backupFileSig{},  // PS-012
+		adminPageSig{apiDocs: rules.APIDocs, exposures: rules.Exposures}, // PS-013 (+product exposures r21)
+		sessionInURLSig{params: rules.URLParams},                         // PS-018
+		crossdomainSig{},                                                 // PS-022
+		captchaAbsenceSig{},                                              // PS-023
+		cookieSecureSig{},                                                // PS-015
+		cookieHTTPOnlySig{},                                              // PS-016
+		cookieSameSiteSig{},                                              // PS-017
+		bodyMarkerSig{cwe: cweStackTrace, sub: "stacktrace", rules: rules.StackTrace}, // PS-006 (promoted from Nuclei r21)
+		bodyMarkerSig{cwe: cweErrorInfo, sub: "error-info", rules: rules.ErrorInfo},   // PS-005 (promoted from Nuclei r21)
+		piiExposureSig{}, // PII exposure (26-외, CWE-359 r21)
 	}
 }

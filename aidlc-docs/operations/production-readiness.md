@@ -5,6 +5,41 @@
 
 The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Below is what MUST happen before the durable backends run in production, and the honest limitations carried forward.
 
+## Increment log — recon 노하우 → observation 반영 (r21, 2026-08-04)
+
+**Scope:** OffenRed-AI-DAST passive/recon 노하우를 in-process observation 엔진에 흡수 —
+nuclei-templates(pinned `@9419e84`, MIT) + 큐레이트 recon 프레임을 **authoring-time에 RE2로
+증류**(런타임 미사용, 신규 Go dep 0). 3개 소유 시그니처 강화 + **파티션 확장 3건**:
+- **PS-012** 백업: 아카이브 매직(zip/SQLite/SQL-dump) 콘텐츠 확증(FP 축소, name 게이트 유지).
+- **PS-010** `.DS_Store`(Bud1) → CWE-527 소스노출 시그니처에 편입(one-CWE-one-owner 유지).
+- **PS-013** 제품노출 마커(Spring actuator/env·phpinfo·Apache server-status) + well-known 확장.
+- **PS-005/006** Nuclei 위임 → **observation-native 승격**(bodyMarkerSig), delegated 4→2.
+- **PII**(CWE-359, **KISA-26 밖** — 빈 투영으로 회계 0): 주민번호(YYMMDD 검증)/email/phone,
+  evidence 값 마스킹(FR-5c).
+
+**새 컨트롤/편차:** `configs/signatures/{exposures,error-disclosure}.yaml`(생성기 산출, `make
+signatures-check` drift 0) · `third_party/nuclei/{exposures-product,errors-stacktrace,errors-info}` +
+`third_party/offenred-recon/`(provenance). 생성기가 `part: header` 마커 스킵(죽은 규칙 방지).
+
+**코드 리뷰(workflow high, 20 agents):** 10건 → 8 수정(maskPII 값 누출·resident-id 오탐·
+compound-key 미탐·symfony 헤더 죽은규칙·/env 접미 오탐·죽은 probe·FindAllIndex·복붙 dedup) +
+2 문서화 trade(**stackTrace 코드-전시 페이지 오탐** = 수동탐지 본질적 한계 · **PS-005/006 능동
+트리거 상실** = Q3=B 의도, coverage Checked 설계대로).
+
+**전 게이트 green**(build ±integration·vet·gofmt·arch-check·`go test -race` 0·gosec pinned 0·
+secrets full-history no-leak·signatures-check 멱등·lint 0·observation cover 85.8%). integration/
+probe-integration/trivy/syft는 CI Docker 위임.
+
+**실 타겟 검증(`http://lab.roronoa.kr/`, in-process `--role=all`):** 부팅 게이트 OK(26 항목 전부
+소유/위임) → 스캔 완료(무크래시). Coverage 26-파티션 정합: **checked 10 + N/A 5 = 15 observation
+judged**, tool-failed 9(probe 바이너리 없음, 정직), **delegated 2(PS-014 ASM/PS-026 Nuclei)**.
+**PS-005/006 = checked**(승격 end-to-end 확인). Findings 0(클린 홈페이지 — 실 대상 오탐 없음).
+r21 신규 well-known(actuator/env·phpinfo·server-status) 스윕됨(CWE-306 12회 실행).
+
+**이월(정직):** H2 콘솔·범용 apache server-info(pin에 nuclei 템플릿 부재) · stackTrace prose 오탐 ·
+PS-005/006 능동 상실 · 발견/서브도메인 스코프(최상위 갭) · changeme(PS-019). 커밋 `5456a0c`(feat)·
+`7eeb0c5`/`fb5e8ab`(docs) on feat/recon-observation. (승인됨; MVP 워크플로에 배포 빌드 없음.)
+
 ## Increment log — Evidence 강화: 구조화 스키마 (r20, 2026-07-31)
 
 **Scope:** `domain.Evidence{Snippets []string}` → 구조화 Evidence(매치 위치 · 룰/가설 ·
