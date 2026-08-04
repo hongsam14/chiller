@@ -39,7 +39,7 @@ func fnd(tool string, sev domain.Severity, snippets ...string) domain.Finding {
 		TargetURL:  "https://example.test/" + tool,
 		SourceTool: tool,
 		Severity:   sev,
-		Evidence:   domain.Evidence{Snippets: snippets},
+		Evidence:   domain.EvidenceOf(snippets...),
 	}
 }
 
@@ -161,11 +161,11 @@ func testNeverErasesEvidence(t *testing.T, s store.FindingsStore) {
 		t.Fatalf("got %d findings, want 2", len(got))
 	}
 	for i := range got {
-		if len(got[i].Evidence.Snippets) == 0 {
+		if len(got[i].Evidence.SnippetStrings()) == 0 {
 			t.Fatalf("finding %d lost its evidence to an evidence-less re-save — the only copy is gone", i)
 		}
-		if got[i].Evidence.Snippets[0] != withEvidence[i].Evidence.Snippets[0] {
-			t.Errorf("finding %d evidence changed: %v", i, got[i].Evidence.Snippets)
+		if got[i].Evidence.SnippetStrings()[0] != withEvidence[i].Evidence.SnippetStrings()[0] {
+			t.Errorf("finding %d evidence changed: %v", i, got[i].Evidence.SnippetStrings())
 		}
 	}
 }
@@ -201,7 +201,10 @@ func testNoAliasing(t *testing.T, s store.FindingsStore) {
 		t.Fatal(err)
 	}
 	in[0].SourceTool = "mutated"
-	in[0].Evidence.Snippets[0] = "mutated"
+	// Mutate the stored evidence structure directly — SnippetStrings() allocates a
+	// fresh slice, so writing through it would only touch a throwaway copy and never
+	// exercise the deep-copy invariant this test exists to enforce.
+	in[0].Evidence.Items[0].Snippet = "mutated"
 
 	got, err := s.LoadFindings(ctx, "scan-alias")
 	if err != nil {
@@ -210,8 +213,8 @@ func testNoAliasing(t *testing.T, s store.FindingsStore) {
 	if got[0].SourceTool != "humble" {
 		t.Error("store aliased the caller's slice")
 	}
-	if len(got[0].Evidence.Snippets) > 0 && got[0].Evidence.Snippets[0] != "original" {
-		t.Error("store aliased the caller's evidence snippets")
+	if len(got[0].Evidence.Items) > 0 && got[0].Evidence.Items[0].Snippet != "original" {
+		t.Error("store aliased the caller's evidence items")
 	}
 }
 
@@ -219,7 +222,7 @@ func testNoAliasing(t *testing.T, s store.FindingsStore) {
 // whatever we save, we load back identically — same order, same normalized CWEs,
 // same bounded evidence. The generator deliberately produces CWE lists that are
 // unsorted, duplicated and sentinel-mixed, and snippet lists that exceed
-// MaxEvidenceSnippets, so the invariants are exercised rather than assumed.
+// MaxEvidenceItems, so the invariants are exercised rather than assumed.
 func testPBTRoundTrip(t *testing.T, s store.FindingsStore) {
 	ctx := context.Background()
 	rng := rand.New(rand.NewSource(20260713))
@@ -248,11 +251,11 @@ func testPBTRoundTrip(t *testing.T, s store.FindingsStore) {
 			if got[i].Severity != findings[i].Severity {
 				t.Fatalf("seed 20260713 iter %d: finding %d severity %v != %v", iter, i, got[i].Severity, findings[i].Severity)
 			}
-			if len(got[i].Evidence.Snippets) > domain.MaxEvidenceSnippets {
+			if len(got[i].Evidence.SnippetStrings()) > domain.MaxEvidenceItems {
 				t.Fatalf("seed 20260713 iter %d: finding %d came back with %d snippets, over the %d bound",
-					iter, i, len(got[i].Evidence.Snippets), domain.MaxEvidenceSnippets)
+					iter, i, len(got[i].Evidence.SnippetStrings()), domain.MaxEvidenceItems)
 			}
-			if !equalSnippets(got[i].Evidence.Snippets, findings[i].Evidence.Snippets) {
+			if !equalSnippets(got[i].Evidence.SnippetStrings(), findings[i].Evidence.SnippetStrings()) {
 				t.Fatalf("seed 20260713 iter %d: finding %d evidence changed across the round trip", iter, i)
 			}
 		}
@@ -268,7 +271,7 @@ func genFinding(rng *rand.Rand, i int) domain.Finding {
 		cwes = append(cwes, genCWEs[rng.Intn(len(genCWEs))]) // duplicates and unsorted, on purpose
 	}
 	// Evidence is bounded by the producer (R9); generate up to the bound.
-	nSnip := rng.Intn(domain.MaxEvidenceSnippets + 1)
+	nSnip := rng.Intn(domain.MaxEvidenceItems + 1)
 	snips := make([]string, nSnip)
 	for j := range snips {
 		snips[j] = strings.Repeat("e", rng.Intn(40)) + fmt.Sprintf("#%d", j)
@@ -278,7 +281,7 @@ func genFinding(rng *rand.Rand, i int) domain.Finding {
 		TargetURL:  fmt.Sprintf("https://host-%d.test/p?q=%d", rng.Intn(5), i),
 		SourceTool: fmt.Sprintf("tool-%d", rng.Intn(4)),
 		Severity:   genSevs[rng.Intn(len(genSevs))],
-		Evidence:   domain.Evidence{Snippets: snips},
+		Evidence:   domain.EvidenceOf(snips...),
 	}
 }
 
@@ -306,8 +309,8 @@ func assertFindingsEqual(t *testing.T, got, want []domain.Finding) {
 		if got[i].Severity != want[i].Severity {
 			t.Errorf("finding %d: severity %v != %v", i, got[i].Severity, want[i].Severity)
 		}
-		if !equalSnippets(got[i].Evidence.Snippets, want[i].Evidence.Snippets) {
-			t.Errorf("finding %d: evidence %v != %v", i, got[i].Evidence.Snippets, want[i].Evidence.Snippets)
+		if !equalSnippets(got[i].Evidence.SnippetStrings(), want[i].Evidence.SnippetStrings()) {
+			t.Errorf("finding %d: evidence %v != %v", i, got[i].Evidence.SnippetStrings(), want[i].Evidence.SnippetStrings())
 		}
 	}
 }

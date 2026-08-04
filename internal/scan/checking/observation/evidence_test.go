@@ -33,7 +33,7 @@ func TestEvidence_CarriesRealMatchedData(t *testing.T) {
 			if err != nil || len(fs) != 1 {
 				t.Fatalf("want 1 finding, got %d (err %v)", len(fs), err)
 			}
-			ev := strings.Join(fs[0].Evidence.Snippets, " ")
+			ev := strings.Join(fs[0].Evidence.SnippetStrings(), " ")
 			if !strings.Contains(ev, c.want) {
 				t.Errorf("evidence must contain the real matched data %q, got %q", c.want, ev)
 			}
@@ -48,7 +48,7 @@ func TestEvidence_Bounded(t *testing.T) {
 	if len(fs) != 1 {
 		t.Fatal("expected a finding")
 	}
-	if n := len([]rune(fs[0].Evidence.Snippets[0])); n > maxEvidenceLen+64 {
+	if n := len([]rune(fs[0].Evidence.SnippetStrings()[0])); n > maxEvidenceLen+64 {
 		t.Errorf("evidence snippet not bounded: %d runes", n)
 	}
 }

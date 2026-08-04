@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/hongsam14/chiller/internal/crypto"
 
@@ -455,8 +456,8 @@ func (m *Mongo) sealOutcome(o domain.WorkItemOutcome) (sealedOutcome, error) {
 			SourceTool: f.SourceTool,
 			Severity:   f.Severity,
 		}
-		if len(f.Evidence.Snippets) > 0 {
-			pt, err := json.Marshal(f.Evidence.Snippets)
+		if !f.Evidence.Empty() {
+			pt, err := json.Marshal(f.Evidence)
 			if err != nil {
 				return sealedOutcome{}, fmt.Errorf("taskstore: marshal evidence: %w", err)
 			}
@@ -494,8 +495,19 @@ func (m *Mongo) openOutcome(s sealedOutcome) (domain.WorkItemOutcome, error) {
 			if err != nil {
 				return domain.WorkItemOutcome{}, fmt.Errorf("taskstore: open evidence on item %q: %w", s.ID, err)
 			}
-			if err := json.Unmarshal(pt, &f.Evidence.Snippets); err != nil {
-				return domain.WorkItemOutcome{}, fmt.Errorf("taskstore: unmarshal evidence on item %q: %w", s.ID, err)
+			if err := json.Unmarshal(pt, &f.Evidence); err != nil {
+				// Pre-r20 ledger evidence is a JSON array, not the struct — degrade to
+				// empty rather than failing the resume (resiliency-baseline, F4). A live
+				// ledger predating the deploy is rare (in-flight scans), but must not wedge.
+				// Scope the degrade to the legacy []string shape ONLY: authenticated
+				// plaintext that is neither the r20 struct nor the old array is a real
+				// corruption and must surface, not silently drop evidence.
+				var legacy []string
+				if lerr := json.Unmarshal(pt, &legacy); lerr != nil {
+					return domain.WorkItemOutcome{}, fmt.Errorf("taskstore: unmarshal evidence on item %q: %w", s.ID, err)
+				}
+				log.Printf("taskstore: evidence on item %q predates the r20 schema; dropping", s.ID)
+				f.Evidence = domain.Evidence{}
 			}
 		}
 		o.Findings = append(o.Findings, f)

@@ -31,15 +31,115 @@ const (
 	cweCookieSameSite domain.CWE = "CWE-1275" // PS-017 (SameSite)
 )
 
-// finding is a small helper to build a native observation finding.
-func finding(cwe domain.CWE, url string, sev domain.Severity, evidence string) domain.Finding {
+// hypotheses maps each owned CWE to the short "what this rule detects" line the
+// downstream AI uses as its starting hypothesis for active verification (FR-E3).
+var hypotheses = map[domain.CWE]string{
+	cwePlaintextLogin: "login form served over http:// — credentials sent in plaintext",
+	cweRobots:         "robots.txt discloses a sensitive path",
+	cweComment:        "secret/token hardcoded in a comment or delivered script",
+	cweGit:            ".git metadata exposed — source/history may be reconstructable",
+	cweEnv:            ".env-style secret keys exposed",
+	cweBackup:         "backup/archive file publicly accessible",
+	cweAdmin:          "management/documentation surface reachable without authentication",
+	cweSessionURL:     "session token carried in the URL",
+	cweCrossdomain:    "over-permissive crossdomain.xml",
+	cweCaptcha:        "login form without a CAPTCHA (brute-force exposure)",
+	cweCookieSecure:   "cookie missing the Secure flag",
+	cweCookieHTTPOnly: "cookie missing the HttpOnly flag",
+	cweCookieSameSite: "cookie with weak/absent SameSite",
+}
+
+// ruleID is the firing rule identity (FR-E3): "observation:CWE-N" or, for the
+// config-driven signatures, "observation:CWE-N/<sub-rule>" (e.g. the gitleaks rule).
+func ruleID(cwe domain.CWE, sub string) string {
+	if sub == "" {
+		return "observation:" + string(cwe)
+	}
+	return "observation:" + string(cwe) + "/" + sub
+}
+
+// respHeaderAllow is the deterministic allowlist of response headers carried in
+// evidence (F3): benign, reproduction-relevant, never the full header set.
+// content-type is intentionally absent — it is carried in the dedicated
+// ResponseContext.ContentType field, so allowlisting it here too would emit it
+// twice and waste a MaxEvidenceHeaders slot.
+var respHeaderAllow = map[string]bool{
+	"server": true, "x-powered-by": true,
+	"location": true, "www-authenticate": true, "content-length": true,
+}
+
+// responseContext builds the bounded response context for a source exchange (FR-E5).
+func responseContext(src *domain.HAREntry) *domain.ResponseContext {
+	if src == nil {
+		return nil
+	}
+	rc := &domain.ResponseContext{Status: src.Status, Truncated: src.Truncated}
+	for _, h := range src.Headers {
+		if rc.ContentType == "" && strings.EqualFold(h.Name, "content-type") {
+			rc.ContentType = clipHeader(h.Value)
+		}
+		if respHeaderAllow[strings.ToLower(h.Name)] && len(rc.Headers) < domain.MaxEvidenceHeaders {
+			rc.Headers = append(rc.Headers, domain.Header{Name: h.Name, Value: clipHeader(h.Value)})
+		}
+	}
+	return rc
+}
+
+func clipHeader(v string) string {
+	if r := []rune(v); len(r) > domain.MaxEvidenceHeaderValueLen {
+		return string(r[:domain.MaxEvidenceHeaderValueLen]) + "…"
+	}
+	return v
+}
+
+// findingAt builds a native observation finding with structured evidence (r20).
+// targetURL is the finding identity (unchanged); src is the exchange the match
+// actually came from — the page response for a body/cookie/url match, or the
+// discovered JS entry for a JS-sourced match (F1). src may be nil (e.g. PS-018
+// fires from the URL alone) → Request falls back to targetURL, Response is omitted.
+func findingAt(cwe domain.CWE, sev domain.Severity, targetURL string, src *domain.HAREntry, item domain.EvidenceItem) domain.Finding {
+	ev := domain.Evidence{Items: []domain.EvidenceItem{item}}
+	if src != nil {
+		ev.Request = &domain.RequestContext{Method: "GET", URL: src.URL}
+		ev.Response = responseContext(src)
+	} else {
+		ev.Request = &domain.RequestContext{Method: "GET", URL: targetURL}
+	}
 	return domain.Finding{
 		CWEs:       []domain.CWE{cwe},
-		TargetURL:  url,
+		TargetURL:  targetURL,
 		SourceTool: "observation:" + string(cwe),
 		Severity:   sev,
-		Evidence:   domain.Evidence{Snippets: []string{evidence}},
+		Evidence:   ev,
 	}
+}
+
+// bodyItemAt builds a PartBody evidence item: a padded context snippet plus the
+// ORIGINAL-body offset/length of the match (so a consumer can re-locate it).
+func bodyItemAt(body []byte, start, end, pad int, rule, hyp string) domain.EvidenceItem {
+	s, e := start-pad, end+pad
+	if s < 0 {
+		s = 0
+	}
+	if e > len(body) {
+		e = len(body)
+	}
+	return domain.EvidenceItem{
+		Snippet:    snippet(body[s:e]),
+		Location:   domain.Location{Part: domain.PartBody, Offset: start, MatchLen: end - start},
+		Rule:       rule,
+		Hypothesis: hyp,
+	}
+}
+
+// bodyMatch builds a PartBody item from re's first match in body, or ok=false when
+// there is no match (so it doubles as the match test, like matchContext did).
+func bodyMatch(body []byte, re *regexp.Regexp, pad int, cwe domain.CWE, sub string) (domain.EvidenceItem, bool) {
+	loc := re.FindIndex(body)
+	if loc == nil {
+		return domain.EvidenceItem{}, false
+	}
+	return bodyItemAt(body, loc[0], loc[1], pad, ruleID(cwe, sub), hypotheses[cwe]), true
 }
 
 // maxEvidenceLen bounds a captured evidence snippet (FR-12/NFR-16): evidence must
@@ -57,33 +157,6 @@ func snippet(b []byte) string {
 		s = string(r[:maxEvidenceLen]) + "…"
 	}
 	return s
-}
-
-// matchContext returns a padded, cleaned window of body around re's first match —
-// the matched text plus a little surrounding context — or "" when there is none
-// (so it doubles as the match test).
-func matchContext(body []byte, re *regexp.Regexp, pad int) string {
-	loc := re.FindIndex(body)
-	if loc == nil {
-		return ""
-	}
-	start, end := loc[0]-pad, loc[1]+pad
-	if start < 0 {
-		start = 0
-	}
-	if end > len(body) {
-		end = len(body)
-	}
-	return snippet(body[start:end])
-}
-
-// withData appends the actual matched evidence to a label so the report shows
-// "<what was detected> — <the real data>", the input a human/AI judges on.
-func withData(label, data string) string {
-	if data == "" {
-		return label
-	}
-	return label + " — " + data
 }
 
 var passwordField = regexp.MustCompile(`(?i)<input[^>]+type\s*=\s*["']?password`)
@@ -105,7 +178,8 @@ func (plaintextLoginSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 		return nil, true, nil // no login form → N/A
 	}
 	if ctx.Response.Scheme == "http" {
-		return []domain.Finding{finding(cwePlaintextLogin, ctx.Target.URL, domain.SevHigh, "password field served over http://")}, false, nil
+		item, _ := bodyMatch(ctx.Response.Body, passwordField, 16, cwePlaintextLogin, "plaintext-login")
+		return []domain.Finding{findingAt(cwePlaintextLogin, domain.SevHigh, ctx.Target.URL, ctx.Response, item)}, false, nil
 	}
 	return nil, false, nil
 }
@@ -127,9 +201,19 @@ func (s sensitiveCommentSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bo
 	// Scan only HTML *comments* and delivered JS source — NOT the visible HTML body
 	// (whose ordinary "Password:" prose would false-positive on every login page).
 	if ctx.Response != nil {
-		for _, c := range htmlComment.FindAllSubmatch(ctx.Response.Body, -1) {
-			if what, data := s.scan(c[1]); data != "" {
-				return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, withData(what+" in HTML comment", data))}, false, nil
+		// FindAllSubmatchIndex (not …Submatch) so the comment body's absolute offset in
+		// the response is known — the evidence item's Location.Offset must index the
+		// response body, not the comment sub-slice.
+		for _, idx := range htmlComment.FindAllSubmatchIndex(ctx.Response.Body, -1) {
+			base := idx[2]
+			if rule, data, off, mlen, ok := s.scan(ctx.Response.Body[idx[2]:idx[3]]); ok {
+				item := domain.EvidenceItem{
+					Snippet:    data,
+					Location:   domain.Location{Part: domain.PartBody, Offset: base + off, MatchLen: mlen},
+					Rule:       ruleID(cweComment, rule),
+					Hypothesis: hypotheses[cweComment],
+				}
+				return []domain.Finding{findingAt(cweComment, domain.SevMedium, ctx.Target.URL, ctx.Response, item)}, false, nil
 			}
 		}
 	}
@@ -137,8 +221,17 @@ func (s sensitiveCommentSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bo
 		if js == nil || s.isLibrary(js.URL) {
 			continue // skip minified libraries (gitleaks global allowlist)
 		}
-		if what, data := s.scan(js.Body); data != "" {
-			return []domain.Finding{finding(cweComment, ctx.Target.URL, domain.SevMedium, withData(what+" in client-delivered JS source", data))}, false, nil
+		if rule, data, off, mlen, ok := s.scan(js.Body); ok {
+			// F1: the match is in the delivered JS, not the page — attribute Request/
+			// Response to that JS exchange (src=js) and pin its URL in Location.SourceURL,
+			// so the consumer re-fetches the JS, not the page. TargetURL stays the page.
+			item := domain.EvidenceItem{
+				Snippet:    data,
+				Location:   domain.Location{Part: domain.PartBody, Offset: off, MatchLen: mlen, SourceURL: js.URL},
+				Rule:       ruleID(cweComment, rule),
+				Hypothesis: hypotheses[cweComment],
+			}
+			return []domain.Finding{findingAt(cweComment, domain.SevMedium, ctx.Target.URL, js, item)}, false, nil
 		}
 	}
 	return nil, false, nil
@@ -155,25 +248,41 @@ func (s sensitiveCommentSig) isLibrary(url string) bool {
 	return false
 }
 
-// scan returns (what, evidence) for the first secret or internal-disclosure match
-// in b, or ("","") when clean. A secret rule fires only when its regex matches AND
-// (if it sets a threshold) the matched value clears the Shannon-entropy gate AND
-// no allowlist regex excuses it — gitleaks' own FP model, ported.
-func (s sensitiveCommentSig) scan(b []byte) (what, data string) {
+// scan returns (rule, evidence, offset, matchLen, ok) for the first secret or
+// internal-disclosure match in b, or ok=false when clean. rule is the firing sub-
+// rule id (gitleaks rule name / disclosure kind); offset/matchLen index b (r20,
+// PD-A). A secret rule fires only when its regex matches AND (if it sets a
+// threshold) the matched value clears the Shannon-entropy gate AND no allowlist
+// regex excuses it — gitleaks' own FP model, ported.
+func (s sensitiveCommentSig) scan(b []byte) (ruleName, data string, offset, matchLen int, ok bool) {
 	lower := strings.ToLower(string(b)) // lower the body ONCE, not per keyword
 	for _, rule := range s.secrets {
 		if !hasAnyKeyword(lower, rule.Keywords) {
 			continue // gitleaks keyword pre-filter (also a big perf win over 200+ regexes)
 		}
-		loc := rule.Re.FindIndex(b)
+		loc := rule.Re.FindSubmatchIndex(b)
 		if loc == nil {
 			continue
 		}
-		m := b[loc[0]:loc[1]]
-		if rule.MinEntropy > 0 && shannon(string(m)) < rule.MinEntropy {
+		m := b[loc[0]:loc[1]] // whole match (keyword=…value context) — used for evidence
+		// The secret is the capture group when the rule defines one, else the whole
+		// match. gitleaks gates entropy AND its allowlist on the SECRET, not the
+		// surrounding `key = …` context; applying them to the whole match instead
+		// (the old bug) let an unquoted variable reference such as
+		// `apiKey = Foo.apiKey` slip past generic-api-key's own `^[a-zA-Z_.-]+$`
+		// allow — because that allow anchors on the value, which never matched while
+		// we tested it against a string still carrying `=` and spaces.
+		secret := m
+		if len(loc) >= 4 && loc[2] >= 0 {
+			secret = b[loc[2]:loc[3]]
+		}
+		if rule.MinEntropy > 0 && shannon(string(secret)) < rule.MinEntropy {
 			continue // low-entropy → minified-JS literal / ordinary word, not a secret
 		}
-		if allowed(m, rule.Allow) {
+		// Allow against the secret (gitleaks' default target) AND the whole match, so
+		// value-anchored allows (`^[a-zA-Z_.-]+$`) and the few match/line-anchored ones
+		// (import …, LICENSE=…, --mount=type=secret) both keep excusing their cases.
+		if allowed(secret, rule.Allow) || allowed(m, rule.Allow) {
 			continue
 		}
 		start := loc[0] - 24
@@ -184,12 +293,12 @@ func (s sensitiveCommentSig) scan(b []byte) (what, data string) {
 		if end > len(b) {
 			end = len(b)
 		}
-		return "secret (" + rule.Name + ")", snippet(b[start:end])
+		return "secret/" + rule.Name, snippet(b[start:end]), loc[0], loc[1] - loc[0], true
 	}
-	if d := s.internal.match(b); d != "" {
-		return "internal/infra disclosure", d
+	if rule, d, off, mlen, ok := s.internal.match(b); ok {
+		return rule, d, off, mlen, true
 	}
-	return "", ""
+	return "", "", 0, 0, false
 }
 
 // allowed reports whether any allowlist regex matches the finding (a documentation
@@ -220,25 +329,26 @@ func hasAnyKeyword(lowered string, keywords []string) bool {
 // match returns internal-disclosure evidence (RFC1918 IP / EC2 host / non-prod
 // host), or "". The RFC1918 hit gets a Go-side boundary guard replacing ZAP's PCRE
 // lookaround: reject a match that is part of a longer dotted number (a version).
-func (ir InternalRules) match(b []byte) string {
+func (ir InternalRules) match(b []byte) (ruleName, data string, offset, matchLen int, ok bool) {
 	if ir.RFC1918 != nil {
 		if loc := ir.RFC1918.FindIndex(b); loc != nil {
 			before := loc[0] > 0 && (b[loc[0]-1] == '.' || isDigit(b[loc[0]-1]))
 			after := loc[1] < len(b) && (b[loc[1]] == '.' || isDigit(b[loc[1]]))
 			if !before && !after {
-				return snippet(b[loc[0]:loc[1]])
+				return "internal/rfc1918", snippet(b[loc[0]:loc[1]]), loc[0], loc[1] - loc[0], true
 			}
 		}
 	}
-	for _, re := range []*regexp.Regexp{ir.EC2Host, ir.NonProdHosts} {
+	kinds := []string{"internal/ec2-host", "internal/nonprod-host"}
+	for i, re := range []*regexp.Regexp{ir.EC2Host, ir.NonProdHosts} {
 		if re == nil {
 			continue
 		}
 		if loc := re.FindIndex(b); loc != nil {
-			return snippet(b[loc[0]:loc[1]])
+			return kinds[i], snippet(b[loc[0]:loc[1]]), loc[0], loc[1] - loc[0], true
 		}
 	}
-	return ""
+	return "", "", 0, 0, false
 }
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
@@ -262,9 +372,25 @@ func (gitExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 		return nil, true, nil // not a .git endpoint → N/A for this target
 	}
 	// config → "[core]"; HEAD → "ref: refs/". Either confirms real git metadata.
-	b := string(ctx.Response.Body)
-	if strings.HasPrefix(b, "ref: refs/") || strings.Contains(b, "[core]") {
-		return []domain.Finding{finding(cweGit, ctx.Target.URL, domain.SevHigh, withData(".git metadata exposed", snippet(ctx.Response.Body)))}, false, nil
+	// The body is a tiny .git artifact, so the whole (bounded) body is the evidence;
+	// Location.Offset still points at the confirming marker so a consumer can anchor.
+	body := ctx.Response.Body
+	b := string(body)
+	off := -1
+	switch {
+	case strings.HasPrefix(b, "ref: refs/"):
+		off = 0
+	case strings.Contains(b, "[core]"):
+		off = strings.Index(b, "[core]")
+	}
+	if off >= 0 {
+		item := domain.EvidenceItem{
+			Snippet:    snippet(body),
+			Location:   domain.Location{Part: domain.PartBody, Offset: off},
+			Rule:       ruleID(cweGit, "git-exposure"),
+			Hypothesis: hypotheses[cweGit],
+		}
+		return []domain.Finding{findingAt(cweGit, domain.SevHigh, ctx.Target.URL, ctx.Response, item)}, false, nil
 	}
 	return nil, false, nil
 }
@@ -309,14 +435,16 @@ func (envExposureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 	if envTemplatePath.MatchString(p) || !envPath.MatchString(p) {
 		return nil, true, nil // public template, or not a .env file at all → N/A
 	}
-	for _, m := range envAnchor.FindAllSubmatch(ctx.Response.Body, -1) {
-		val := m[3]
+	body := ctx.Response.Body
+	for _, loc := range envAnchor.FindAllSubmatchIndex(body, -1) {
+		val := body[loc[6]:loc[7]] // group 3 = the value
 		if envPlaceholderPrefix.Match(val) {
 			continue // unfilled template token, not a real secret
 		}
-		// m[0] is the matched `KEY=value` — the real exposed credential the operator
+		// loc[0:1] is the matched `KEY=value` — the real exposed credential the operator
 		// needs to see to judge and to rotate.
-		return []domain.Finding{finding(cweEnv, ctx.Target.URL, domain.SevCritical, withData(".env with secret keys exposed", snippet(m[0])))}, false, nil
+		item := bodyItemAt(body, loc[0], loc[1], 0, ruleID(cweEnv, "env-exposure"), hypotheses[cweEnv])
+		return []domain.Finding{findingAt(cweEnv, domain.SevCritical, ctx.Target.URL, ctx.Response, item)}, false, nil
 	}
 	return nil, false, nil
 }
@@ -342,8 +470,15 @@ func (s sessionInURLSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 			continue // a trivial value is not a leaked session token
 		}
 		if s.matches(kv.name) {
-			return []domain.Finding{finding(cweSessionURL, ctx.Target.URL, domain.SevMedium,
-				withData("sensitive parameter in URL", snippet([]byte(kv.name+"="+kv.value))))}, false, nil
+			item := domain.EvidenceItem{
+				Snippet:    snippet([]byte(kv.name + "=" + kv.value)),
+				Location:   domain.Location{Part: domain.PartURL, Name: kv.name},
+				Rule:       ruleID(cweSessionURL, "session-in-url"),
+				Hypothesis: hypotheses[cweSessionURL],
+			}
+			// src=ctx.Response (may be nil if the fetch failed; findingAt tolerates it —
+			// PS-018 fires from the URL alone). PD-B.
+			return []domain.Finding{findingAt(cweSessionURL, domain.SevMedium, ctx.Target.URL, ctx.Response, item)}, false, nil
 		}
 	}
 	return nil, false, nil
@@ -428,8 +563,8 @@ func (crossdomainSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 	if ctx.Response == nil {
 		return nil, false, nil
 	}
-	if data := matchContext(ctx.Response.Body, crossdomainWild, 8); data != "" {
-		return []domain.Finding{finding(cweCrossdomain, ctx.Target.URL, domain.SevMedium, withData(`crossdomain.xml allows domain="*"`, data))}, false, nil
+	if item, ok := bodyMatch(ctx.Response.Body, crossdomainWild, 8, cweCrossdomain, "crossdomain"); ok {
+		return []domain.Finding{findingAt(cweCrossdomain, domain.SevMedium, ctx.Target.URL, ctx.Response, item)}, false, nil
 	}
 	return nil, false, nil
 }
@@ -466,7 +601,13 @@ func (backupFileSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, erro
 	// engine fabricate a High from its own synthesized request — require the body
 	// to NOT look like HTML before reporting (r10 FP-narrow).
 	if backupName.MatchString(pathOf(ctx.Target.URL)) && !looksLikeHTML(ctx.Response) {
-		return []domain.Finding{finding(cweBackup, ctx.Target.URL, domain.SevHigh, "accessible backup file")}, false, nil
+		item := domain.EvidenceItem{
+			Snippet:    "accessible backup file: " + pathOf(ctx.Target.URL),
+			Location:   domain.Location{Part: domain.PartURL},
+			Rule:       ruleID(cweBackup, "backup-file"),
+			Hypothesis: hypotheses[cweBackup],
+		}
+		return []domain.Finding{findingAt(cweBackup, domain.SevHigh, ctx.Target.URL, ctx.Response, item)}, false, nil
 	}
 	return nil, false, nil
 }
@@ -512,8 +653,14 @@ func (s adminPageSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 	// body marker) is a management-surface exposure — same owning CWE (PS-013).
 	// The body marker avoids the path-only false positive a soft-404 would cause.
 	if ctx.Response.Status == 200 {
-		if data := s.apiDocs.match(path, ctx.Response.Body); data != "" {
-			return []domain.Finding{finding(cweAdmin, ctx.Target.URL, domain.SevMedium, withData("exposed API documentation", data))}, false, nil
+		if data, off, mlen, ok := s.apiDocs.match(path, ctx.Response.Body); ok {
+			item := domain.EvidenceItem{
+				Snippet:    data,
+				Location:   domain.Location{Part: domain.PartBody, Offset: off, MatchLen: mlen},
+				Rule:       ruleID(cweAdmin, "api-docs"),
+				Hypothesis: hypotheses[cweAdmin],
+			}
+			return []domain.Finding{findingAt(cweAdmin, domain.SevMedium, ctx.Target.URL, ctx.Response, item)}, false, nil
 		}
 	}
 	if !adminPath.MatchString(path) {
@@ -525,7 +672,8 @@ func (s adminPageSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, err
 	body := string(ctx.Response.Body)
 	if ctx.Response.Status == 200 && adminContentMarker.MatchString(body) &&
 		!hasPasswordField(body) && !loginMarker.MatchString(body) {
-		return []domain.Finding{finding(cweAdmin, ctx.Target.URL, domain.SevHigh, "admin page reachable without authentication")}, false, nil
+		item, _ := bodyMatch(ctx.Response.Body, adminContentMarker, 24, cweAdmin, "admin-open")
+		return []domain.Finding{findingAt(cweAdmin, domain.SevHigh, ctx.Target.URL, ctx.Response, item)}, false, nil
 	}
 	return nil, false, nil
 }
@@ -546,8 +694,8 @@ func (robotsSensitiveSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool,
 	if ctx.Response == nil {
 		return nil, false, nil
 	}
-	if data := matchContext(ctx.Response.Body, robotsSensitive, 0); data != "" {
-		return []domain.Finding{finding(cweRobots, ctx.Target.URL, domain.SevLow, withData("robots.txt discloses sensitive path", data))}, false, nil
+	if item, ok := bodyMatch(ctx.Response.Body, robotsSensitive, 0, cweRobots, "robots-sensitive"); ok {
+		return []domain.Finding{findingAt(cweRobots, domain.SevLow, ctx.Target.URL, ctx.Response, item)}, false, nil
 	}
 	return nil, false, nil
 }
@@ -567,7 +715,10 @@ func (captchaAbsenceSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 		return nil, true, nil // no login form → N/A
 	}
 	if !captchaMarker.MatchString(body) {
-		return []domain.Finding{finding(cweCaptcha, ctx.Target.URL, domain.SevLow, "login form without CAPTCHA")}, false, nil
+		// Evidence is the login form itself (the password field) — the thing that
+		// should have had a CAPTCHA. Absence has no offset of its own.
+		item, _ := bodyMatch(ctx.Response.Body, passwordField, 16, cweCaptcha, "captcha-absence")
+		return []domain.Finding{findingAt(cweCaptcha, domain.SevLow, ctx.Target.URL, ctx.Response, item)}, false, nil
 	}
 	return nil, false, nil
 }
@@ -593,12 +744,18 @@ func offendingCookies(cs []domain.Cookie, bad func(domain.Cookie) bool) (first s
 // cookieFinding builds the single per-CWE finding. desc states the exact defect
 // (a boolean flag is "without X"; SameSite is a value, so a permissive/absent
 // value is described accurately rather than as merely "without SameSite").
-func cookieFinding(cwe domain.CWE, url, desc, first string, n int) []domain.Finding {
+func cookieFinding(cwe domain.CWE, targetURL, desc, first string, n int, src *domain.HAREntry) []domain.Finding {
 	ev := desc + ": " + first
 	if n > 1 {
 		ev = ev + " (+" + itoa(n-1) + " more)"
 	}
-	return []domain.Finding{finding(cwe, url, domain.SevMedium, ev)}
+	item := domain.EvidenceItem{
+		Snippet:    ev,
+		Location:   domain.Location{Part: domain.PartCookie, Name: first},
+		Rule:       ruleID(cwe, "cookie-flags"),
+		Hypothesis: hypotheses[cwe],
+	}
+	return []domain.Finding{findingAt(cwe, domain.SevMedium, targetURL, src, item)}
 }
 
 func itoa(n int) string {
@@ -623,7 +780,7 @@ func (cookieSecureSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, er
 		return nil, true, nil // no cookies → not applicable
 	}
 	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool { return !c.Secure }); n > 0 {
-		return cookieFinding(cweCookieSecure, ctx.Target.URL, "cookie without Secure", first, n), false, nil
+		return cookieFinding(cweCookieSecure, ctx.Target.URL, "cookie without Secure", first, n, ctx.Response), false, nil
 	}
 	return nil, false, nil
 }
@@ -636,7 +793,7 @@ func (cookieHTTPOnlySig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 		return nil, true, nil
 	}
 	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool { return !c.HttpOnly }); n > 0 {
-		return cookieFinding(cweCookieHTTPOnly, ctx.Target.URL, "cookie without HttpOnly", first, n), false, nil
+		return cookieFinding(cweCookieHTTPOnly, ctx.Target.URL, "cookie without HttpOnly", first, n, ctx.Response), false, nil
 	}
 	return nil, false, nil
 }
@@ -652,7 +809,7 @@ func (cookieSameSiteSig) Judge(ctx domain.ScanContext) ([]domain.Finding, bool, 
 	if first, n := offendingCookies(ctx.Response.Cookies, func(c domain.Cookie) bool {
 		return c.SameSite == "" || strings.EqualFold(c.SameSite, "None")
 	}); n > 0 {
-		return cookieFinding(cweCookieSameSite, ctx.Target.URL, "cookie with weak SameSite (missing or None)", first, n), false, nil
+		return cookieFinding(cweCookieSameSite, ctx.Target.URL, "cookie with weak SameSite (missing or None)", first, n, ctx.Response), false, nil
 	}
 	return nil, false, nil
 }

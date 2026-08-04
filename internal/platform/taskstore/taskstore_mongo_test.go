@@ -104,7 +104,7 @@ func TestMongo_LedgerEvidenceIsEncryptedAtRest(t *testing.T) {
 	}
 	f := domain.Finding{
 		CWEs: []domain.CWE{"CWE-614"}, TargetURL: "https://x/y", SourceTool: "obs",
-		Severity: domain.SevHigh, Evidence: domain.Evidence{Snippets: []string{secret}},
+		Severity: domain.SevHigh, Evidence: domain.EvidenceOf(secret),
 	}
 	if ok, err := s.RecordOutcome(ctx, "s#0", "w", domain.WorkItemOutcome{ID: "s#0", Findings: []domain.Finding{f}}); err != nil || !ok {
 		t.Fatalf("record: %v %v", ok, err)
@@ -115,7 +115,7 @@ func TestMongo_LedgerEvidenceIsEncryptedAtRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || len(got[0].Findings) != 1 || got[0].Findings[0].Evidence.Snippets[0] != secret {
+	if len(got) != 1 || len(got[0].Findings) != 1 || got[0].Findings[0].Evidence.SnippetStrings()[0] != secret {
 		t.Fatalf("evidence did not round-trip: %+v", got)
 	}
 
@@ -144,7 +144,7 @@ func TestMongo_LedgerEvidenceIsEncryptedAtRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after[0].Findings[0].Evidence.Snippets) != 0 {
+	if len(after[0].Findings[0].Evidence.SnippetStrings()) != 0 {
 		t.Error("PurgeOutcomeEvidence left the evidence behind")
 	}
 }

@@ -98,16 +98,16 @@ func TestProperty_RFC1918BoundaryGuard(t *testing.T) {
 	ips := []string{"10.0.0.1", "10.255.13.7", "172.16.0.5", "172.31.255.254", "192.168.1.1"}
 	for _, ip := range ips {
 		// delimited by non-digit/non-dot on both sides → must fire
-		if ir.match([]byte("host="+ip+" end")) == "" {
+		if _, _, _, _, ok := ir.match([]byte("host=" + ip + " end")); !ok {
 			t.Errorf("delimited private IP %q should be detected", ip)
 		}
 		// embedded in a longer dotted number (leading and trailing digit runs) → must not
-		if got := ir.match([]byte("build 3." + ip + ".9")); got != "" {
+		if _, got, _, _, ok := ir.match([]byte("build 3." + ip + ".9")); ok {
 			t.Errorf("IP embedded in a version number (3.%s.9) must not fire, got %q", ip, got)
 		}
 	}
 	// a public IP is never RFC1918
-	if got := ir.match([]byte("peer 8.8.8.8 ok")); got != "" {
+	if _, got, _, _, ok := ir.match([]byte("peer 8.8.8.8 ok")); ok {
 		t.Errorf("public IP must not match RFC1918, got %q", got)
 	}
 }

@@ -66,7 +66,7 @@ func TestCookieSameSite_None_Flagged(t *testing.T) {
 	}
 	// Evidence must not claim the cookie is "without SameSite" — it is present but
 	// permissive (None). The message reflects both the missing and None cases.
-	ev := fs[0].Evidence.Snippets[0]
+	ev := fs[0].Evidence.SnippetStrings()[0]
 	if strings.Contains(ev, "without SameSite") || !strings.Contains(ev, "missing or None") {
 		t.Errorf("SameSite=None evidence must reflect the None case, got %q", ev)
 	}

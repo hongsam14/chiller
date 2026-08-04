@@ -30,12 +30,49 @@ const (
 
 // findingDTO is one concrete finding under an item — the evidence a customer
 // drills into to confirm a vulnerability (which URL, which tool, what was seen).
+// Evidence is the structured r20 feed (match location, firing rule, hypothesis)
+// plus the request/response context a downstream consumer reproduces from.
 type findingDTO struct {
-	TargetURL  string   `json:"targetUrl"`
-	SourceTool string   `json:"sourceTool"`
-	Severity   string   `json:"severity"`
-	CWEs       []string `json:"cwes"`
-	Evidence   []string `json:"evidence,omitempty"`
+	TargetURL  string            `json:"targetUrl"`
+	SourceTool string            `json:"sourceTool"`
+	Severity   string            `json:"severity"`
+	CWEs       []string          `json:"cwes"`
+	Evidence   []evidenceItemDTO `json:"evidence,omitempty"`
+	Request    *requestDTO       `json:"request,omitempty"`
+	Response   *responseDTO      `json:"response,omitempty"`
+}
+
+type evidenceItemDTO struct {
+	Snippet    string       `json:"snippet"`
+	Location   *locationDTO `json:"location,omitempty"`
+	Rule       string       `json:"rule,omitempty"`
+	Hypothesis string       `json:"hypothesis,omitempty"`
+}
+
+type locationDTO struct {
+	Part      string `json:"part,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Offset    int    `json:"offset"` // no omitempty: a real match at byte 0 must stay on the wire
+	MatchLen  int    `json:"matchLen,omitempty"`
+	SourceURL string `json:"sourceUrl,omitempty"`
+}
+
+type requestDTO struct {
+	Method  string      `json:"method,omitempty"`
+	URL     string      `json:"url,omitempty"`
+	Headers []headerDTO `json:"headers,omitempty"`
+}
+
+type responseDTO struct {
+	Status      int         `json:"status,omitempty"`
+	ContentType string      `json:"contentType,omitempty"`
+	Headers     []headerDTO `json:"headers,omitempty"`
+	Truncated   bool        `json:"truncated,omitempty"`
+}
+
+type headerDTO struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 type reportItemDTO struct {
@@ -148,7 +185,9 @@ func (h *Handler) buildComplianceReport(rep report.Report) complianceReportDTO {
 				SourceTool: f.SourceTool,
 				Severity:   f.Severity.String(),
 				CWEs:       cweStrings(f.CWEs),
-				Evidence:   f.Evidence.Snippets,
+				Evidence:   evidenceItems(f.Evidence.Items),
+				Request:    requestContext(f.Evidence.Request),
+				Response:   responseContext(f.Evidence.Response),
 			})
 		}
 		if topSev != domain.SevUnset {
@@ -211,6 +250,60 @@ func deriveResult(status domain.ItemStatus, findings int) string {
 	default:
 		return resultToolFailed
 	}
+}
+
+// evidenceItems / requestContext / responseContext project the structured domain
+// evidence onto the wire DTO. omitempty on the DTO fields keeps probe evidence
+// (which carries no location/context) compact — nothing is fabricated.
+func evidenceItems(items []domain.EvidenceItem) []evidenceItemDTO {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]evidenceItemDTO, 0, len(items))
+	for _, it := range items {
+		d := evidenceItemDTO{Snippet: it.Snippet, Rule: it.Rule, Hypothesis: it.Hypothesis}
+		if loc := it.Location; loc != (domain.Location{}) {
+			d.Location = &locationDTO{
+				Part:      string(loc.Part),
+				Name:      loc.Name,
+				Offset:    loc.Offset,
+				MatchLen:  loc.MatchLen,
+				SourceURL: loc.SourceURL,
+			}
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+func requestContext(r *domain.RequestContext) *requestDTO {
+	if r == nil {
+		return nil
+	}
+	return &requestDTO{Method: r.Method, URL: r.URL, Headers: headerDTOs(r.Headers)}
+}
+
+func responseContext(r *domain.ResponseContext) *responseDTO {
+	if r == nil {
+		return nil
+	}
+	return &responseDTO{
+		Status:      r.Status,
+		ContentType: r.ContentType,
+		Headers:     headerDTOs(r.Headers),
+		Truncated:   r.Truncated,
+	}
+}
+
+func headerDTOs(hs []domain.Header) []headerDTO {
+	if len(hs) == 0 {
+		return nil
+	}
+	out := make([]headerDTO, len(hs))
+	for i, h := range hs {
+		out[i] = headerDTO{Name: h.Name, Value: h.Value}
+	}
+	return out
 }
 
 func cweStrings(cwes []domain.CWE) []string {
