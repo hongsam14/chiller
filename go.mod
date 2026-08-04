@@ -3,7 +3,7 @@ module github.com/hongsam14/chiller
 go 1.26.5
 
 require (
-	github.com/BurntSushi/toml v1.4.0
+	github.com/BurntSushi/toml v1.6.0
 	github.com/andybalholm/brotli v1.2.2
 	github.com/klauspost/compress v1.19.1
 	github.com/playwright-community/playwright-go v0.5200.1
