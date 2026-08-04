@@ -6,8 +6,10 @@
 #
 # Distinct CWEs — each maps to exactly the item its owning checker covers, so
 # ownership → PS-ID is unambiguous (checker CWEs in internal/scan/checking/*).
-# 22 covered items (10 observation + 12 probe). Delegated PS-005/006/014/026 are
-# NOT here — they come from configs/coverage/kisa.yaml delegations.
+# 24 covered items (15 observation + 9 probe). Delegated PS-014/026 are NOT here —
+# they come from configs/coverage/kisa.yaml delegations. (r21: PS-005/006 promoted
+# to observation-native; CWE-359 PII is mapped with an EMPTY KISA projection so it
+# clears the boot totality check without being counted against any of the 26 items.)
 version: "kisa-2026-07-08"
 
 map:
@@ -35,6 +37,14 @@ map:
   CWE-598:  { KISA: [PS-018] }          # session id in URL
   CWE-942:  { KISA: [PS-022] }          # crossdomain.xml permissive
   CWE-799:  { KISA: [PS-023] }          # CAPTCHA absence on login
+  # --- Observation: PS-005/006 promoted from Nuclei delegation (r21) ---
+  CWE-209:  { KISA: [PS-006] }          # stack trace disclosure
+  CWE-497:  { KISA: [PS-005] }          # error page info disclosure
+  # --- Observation: PII exposure, OUTSIDE the KISA-26 set (r21) ---
+  # Empty projection (like no-canonical-cwe): the piiExposureSig owns CWE-359 so the
+  # boot totality check passes (KnownCWE), but Project(CWE-359, KISA) == [] means it
+  # is accounted against no PS item — the finding is reported without a KISA badge.
+  CWE-359:  { KISA: [] }                # personal information exposure (26-외)
   # --- attacker-axis sentinel (subzy) ---
   no-canonical-cwe: { KISA: [] }        # explicit empty — never silence (R8)
 

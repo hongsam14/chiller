@@ -19,4 +19,13 @@ func commentSig(t *testing.T) sensitiveCommentSig {
 	return sensitiveCommentSig{secrets: r.Secrets, libPaths: r.LibraryPaths, internal: r.Internal}
 }
 func sessionSig(t *testing.T) sessionInURLSig { return sessionInURLSig{params: testRules(t).URLParams} }
-func adminSig(t *testing.T) adminPageSig      { return adminPageSig{apiDocs: testRules(t).APIDocs} }
+func adminSig(t *testing.T) adminPageSig {
+	r := testRules(t)
+	return adminPageSig{apiDocs: r.APIDocs, exposures: r.Exposures}
+}
+func stackSig(t *testing.T) bodyMarkerSig {
+	return bodyMarkerSig{cwe: cweStackTrace, sub: "stacktrace", rules: testRules(t).StackTrace}
+}
+func errInfoSig(t *testing.T) bodyMarkerSig {
+	return bodyMarkerSig{cwe: cweErrorInfo, sub: "error-info", rules: testRules(t).ErrorInfo}
+}

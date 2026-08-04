@@ -1,0 +1,11 @@
+repo: OffenRed-AI-DAST (enki internal sibling; same org)
+files: stages/stage2c_signal_patterns.py, stages/response_signals.py
+commit: local-working-tree
+license: internal (enki) — NOT vendored as code
+note: |
+  This directory carries ONLY language-runtime stack-frame FORMAT FACTS distilled
+  to RE2 (e.g. Java "at pkg.Class(File.java:NN)"), which nuclei-templates do not
+  encode as literal 'words'. These formats are public conventions, cross-verifiable
+  against nuclei/OWASP; no proprietary code is copied. Provenance-only (no LICENSE
+  file needed — internal, format facts, same org). Fed into error-disclosure.yaml
+  stackTrace[] (PS-006/CWE-209) as a curated union alongside the nuclei literals.
