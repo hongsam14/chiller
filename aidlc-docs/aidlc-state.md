@@ -5,7 +5,7 @@
 - **Repo**: Service-Passive-Scanner · **Module**: `github.com/enki-offen/chiller`
 - **Project Type**: Greenfield (new build), informed by a brownfield reference (`coolant`)
 - **Start Date**: 2026-07-08
-- **Current Stage**: ✅ MVP (4 units + Build&Test + Operations) **plus 7 post-MVP increments (r7→r17), all merged to main** (main tip `71ceabe`). The detection engine is now substantively wired — see **Implementation status** below. Active follow-ups in Backlog.
+- **Current Stage**: ✅ MVP (4 units + Build&Test + Operations) **plus 10 post-MVP increments (r7→r20), all merged to main** (main tip `9e761d0`, PR #28 merged 2026-08-04). The detection engine is now substantively wired — see **Implementation status** below. Active follow-ups in Backlog.
 - **Driving Plan**: `aidlc-docs/inception/requirements/reference/augmentation_plan.html` — KISA 컴플라이언스 26개 항목 passive-scanner 엔진
 
 ## Implementation status (2026-07-29) — where the project actually stands
@@ -202,7 +202,7 @@ Branch `feat/probe-wiring`. Scope: wire probe CLIs (infra-plan §3, Backlog TOP 
 
 ### 📌 AI-DLC 진행 상태 (2026-07-31)
 - ✅ **r7~r17 전부 main 병합 완료**(main `71ceabe`).
-- ✅ **r20(evidence 강화) 전 단계 완료** on feat/evidence-enrichment — Requirements→Workflow Planning→FD(자기검증)→Code Gen(P1 자기검증 + P2 kernel-panic 재개검증)→코드리뷰(high 6수정)→Build&Test(로컬 green)→Operations 도달. 커밋 `8f0f498`/`564285b`/`071ad94`. PR/병합 대기. 구조화 Evidence로 다운스트림 AI 기계판독 근거 제공. data-loss 리뷰 2건 수정(구 스키마만 강등).
+- ✅ **r20(evidence 강화) 전 단계 완료** on feat/evidence-enrichment — Requirements→Workflow Planning→FD(자기검증)→Code Gen(P1 자기검증 + P2 kernel-panic 재개검증)→코드리뷰(high 6수정)→Build&Test(로컬 green)→Operations 도달. 커밋 `8f0f498`/`564285b`/`071ad94`/`d515c4d` + CI 교정 `7a7a72a`(gitleaks allowlist: evidence seal 테스트 가짜 픽스처 `AbCdEf0123456789` 오탐 — full-history 스캔은 커밋 후에만 검출). **PR #28 merged 2026-08-04** (main tip `9e761d0`, 전 체크 green). 구조화 Evidence로 다운스트림 AI 기계판독 근거 제공. data-loss 리뷰 2건 수정(구 스키마만 강등).
 - ✅ **r18(subzy DB #0e) 전 단계 완료** on feat/subzy-db — Operations 도달, PR/병합 대기(PR #26).
 - ✅ **r19(changeme/PS-019) 조사 종결** on feat/changeme-wiring — Requirements(제한적 배선 + N/A applicability + well-known B 커버리지) → Workflow Planning → Functional Design(applicable 훅·well-known login 마커) → Code Gen P1(플랜+근거리뷰 F1~F7) → **Code Gen P2 Step 0 조기 스모크에서 STOP&REPORT**(telnetlib py3.13+ 부적합 + ~1GB). 사용자 결정=**stub 유지(정직 바닥)**. **코드 변경 0**(주석만: adapters.go/Dockerfile의 부정확한 "Python2 heritage" → 스모크-검증된 실제 이유로 정정). 다음: 발견/서브도메인 스코프 or Option C(자체 경량 PS-019 체크).
 

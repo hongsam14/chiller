@@ -1778,3 +1778,19 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: OPERATIONS - r20 Operations 도달, 증분 종료.
 
 ---
+
+## PR #28 병합 준비 — CI supply-chain 실패 교정 (r20)
+**Timestamp**: 2026-08-04T02:15:00Z
+**User Input**: "PR #28 병합 먼저"
+**AI Response**: PR #28(feat/evidence-enrichment, r20) 병합 착수. mergeable=MERGEABLE이나 mergeStateStatus=UNSTABLE — CI `supply-chain` 잡의 "secret scan (full history)" 스텝 FAILURE 확인(fast/integration/probe-integration/GitGuardian은 SUCCESS, main은 green). 원인 규명: gitleaks full-history 스캔이 커밋 8f0f498에 들어간 **r20 신규 evidence seal 테스트의 가짜 픽스처** 2건을 generic-api-key(엔트로피 4.0)로 오탐 — `internal/findings/store/evidence_seal_test.go:36`, `internal/platform/taskstore/evidence_seal_test.go:83`의 `apiKey='AbCdEf0123456789'`. 실 크리덴셜 아님(테스트 스니펫 문자열). B&T 당시 로컬 green이었던 이유: gitleaks detect는 git 히스토리를 스캔하므로 커밋 전 워킹트리 상태에선 미검출. 교정: `.gitleaks.toml` 기존 규율(정확 리터럴 allowlist, 파일은 계속 전량 스캔) 그대로 `AbCdEf0123456789` 추가. 로컬 `make secrets` 재검 green(76 commits, no leaks). 커밋 `7a7a72a` push.
+**Context**: OPERATIONS - r20 PR 병합 게이트, CI 교정.
+
+---
+
+## PR #28 병합 완료 (r20 종결)
+**Timestamp**: 2026-08-04T02:18:00Z
+**User Input**: "PR #28 병합 먼저"
+**AI Response**: CI 재실행 전 체크 green(fast·integration·supply-chain·probe-integration·GitGuardian; probe-fixture-positive=SKIPPED), mergeStateStatus=CLEAN 확인 후 `gh pr merge 28 --merge` 실행 → **MERGED 2026-08-04T02:17:59Z**, main tip `9e761d0`. 로컬 브랜치 삭제는 미커밋 audit.md 때문에 gh가 중단(원격 병합은 정상 완료). aidlc-state.md 갱신: Current Stage "10 post-MVP increments (r7→r20), all merged to main (main tip 9e761d0)" + r20 블록에 병합/CI 교정 커밋 기록. 본 문서 변경은 `docs/r20-merge-close` 브랜치에 커밋(default 브랜치 직접 커밋 금지).
+**Context**: OPERATIONS - r20 병합 완료, 상태 종결.
+
+---
