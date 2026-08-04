@@ -22,6 +22,9 @@ type Rules struct {
 	URLParams    []string         // url-sensitive.yaml — ZAP sensitive param names (lowercased)
 	Internal     InternalRules    // internal-disclosure.yaml — ZAP Private-IP + heuristic
 	APIDocs      APIDocRules      // api-docs.yaml — nuclei exposed-API surfaces
+	Exposures    ExposureRules    // exposures.yaml — nuclei product-exposure surfaces (PS-013)
+	StackTrace   []*regexp.Regexp // error-disclosure.yaml stackTrace[] — nuclei+recon (PS-006)
+	ErrorInfo    []*regexp.Regexp // error-disclosure.yaml errorInfo[] — nuclei (PS-005)
 }
 
 // SecretRule is one gitleaks-distilled secret pattern. MinEntropy 0 disables the
@@ -72,6 +75,36 @@ func (a APIDocRules) match(path string, body []byte) (ev string, offset, matchLe
 	return "", 0, 0, false
 }
 
+// ExposureRules detect an exposed product/management surface (Spring Boot actuator/
+// env, phpinfo, Apache server-status): a request path in Paths whose response body
+// contains a Marker. Same shape/semantics as APIDocRules — a body marker is required
+// so a soft-404 that serves a homepage for the path cannot false-fire (PS-013).
+type ExposureRules struct {
+	Paths   []string
+	Markers []*regexp.Regexp
+}
+
+// match returns matched marker evidence when path is an exposure path AND the body
+// confirms it, else "". Path matches exactly or as a suffix (mounted under a prefix).
+func (e ExposureRules) match(path string, body []byte) (ev string, offset, matchLen int, ok bool) {
+	hit := false
+	for _, p := range e.Paths {
+		if path == p || strings.HasSuffix(path, p) {
+			hit = true
+			break
+		}
+	}
+	if !hit {
+		return "", 0, 0, false
+	}
+	for _, m := range e.Markers {
+		if loc := m.FindIndex(body); loc != nil {
+			return snippet(body[loc[0]:loc[1]]), loc[0], loc[1] - loc[0], true
+		}
+	}
+	return "", 0, 0, false
+}
+
 // ---- on-disk shapes (match tools/sigimport output) ----
 
 type secretsFile struct {
@@ -95,6 +128,14 @@ type internalFile struct {
 type apiDocsFile struct {
 	Paths       []string `yaml:"paths"`
 	BodyMarkers []string `yaml:"bodyMarkers"`
+}
+type exposuresFile struct {
+	Paths   []string `yaml:"paths"`
+	Markers []string `yaml:"markers"`
+}
+type errorDisclosureFile struct {
+	StackTrace []string `yaml:"stackTrace"`
+	ErrorInfo  []string `yaml:"errorInfo"`
 }
 
 // LoadRules reads configs/signatures/ (fail-closed): every listed regex must
@@ -168,7 +209,56 @@ func LoadRules(dir string) (Rules, error) {
 		}
 		r.APIDocs.BodyMarkers = append(r.APIDocs.BodyMarkers, re)
 	}
+
+	// exposures.yaml — product-exposure markers are substrings (like api-docs):
+	// wrap each in (?i) + QuoteMeta so the signature substring-matches them.
+	var ef exposuresFile
+	if err := readYAML(filepath.Join(dir, "exposures.yaml"), &ef); err != nil {
+		return r, err
+	}
+	if len(ef.Markers) == 0 {
+		return r, fmt.Errorf("exposures.yaml: no markers (fail-closed)")
+	}
+	r.Exposures.Paths = ef.Paths
+	for _, m := range ef.Markers {
+		re, err := regexp.Compile(`(?i)` + regexp.QuoteMeta(m))
+		if err != nil {
+			return r, fmt.Errorf("exposures.yaml marker %q: %w", m, err)
+		}
+		r.Exposures.Markers = append(r.Exposures.Markers, re)
+	}
+
+	// error-disclosure.yaml — stackTrace[]/errorInfo[] are ALREADY RE2 patterns
+	// (QuoteMeta'd nuclei literals + curated recon frame regexes), compiled directly
+	// with a case-insensitive prefix. Fail-closed: a bad pattern or empty set aborts.
+	var df errorDisclosureFile
+	if err := readYAML(filepath.Join(dir, "error-disclosure.yaml"), &df); err != nil {
+		return r, err
+	}
+	if len(df.StackTrace) == 0 || len(df.ErrorInfo) == 0 {
+		return r, fmt.Errorf("error-disclosure.yaml: empty stackTrace or errorInfo (fail-closed)")
+	}
+	if r.StackTrace, err = compileEach(df.StackTrace, "error-disclosure stackTrace"); err != nil {
+		return r, err
+	}
+	if r.ErrorInfo, err = compileEach(df.ErrorInfo, "error-disclosure errorInfo"); err != nil {
+		return r, err
+	}
 	return r, nil
+}
+
+// compileEach compiles each RE2 pattern with a case-insensitive prefix, failing
+// closed on the first invalid pattern (label names the source for the error).
+func compileEach(pats []string, label string) ([]*regexp.Regexp, error) {
+	out := make([]*regexp.Regexp, 0, len(pats))
+	for _, p := range pats {
+		re, err := regexp.Compile(`(?i)` + p)
+		if err != nil {
+			return nil, fmt.Errorf("%s %q: %w", label, p, err)
+		}
+		out = append(out, re)
+	}
+	return out, nil
 }
 
 func readYAML(path string, v any) error {

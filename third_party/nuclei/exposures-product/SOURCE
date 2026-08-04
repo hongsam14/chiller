@@ -1,0 +1,5 @@
+repo: https://github.com/projectdiscovery/nuclei-templates
+files: http/technologies/springboot-actuator.yaml, http/misconfiguration/springboot/springboot-env.yaml, http/exposures/configs/phpinfo-files.yaml, http/misconfiguration/apache/apache-server-status.yaml
+commit: 9419e84b01ba4a591a2396b5ed490eaa8f83c18a
+license: MIT
+note: product-exposure markers (Spring Boot actuator/env, phpinfo, Apache server-status) -> configs/signatures/exposures.yaml (PS-013/CWE-306). H2 console + generic apache server-info have no template at this pin -> omitted (honest).

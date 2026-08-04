@@ -1,0 +1,5 @@
+repo: https://github.com/projectdiscovery/nuclei-templates
+files: http/misconfiguration/django-debug-config-enabled.yaml, http/misconfiguration/laravel-debug-enabled.yaml, http/misconfiguration/symfony/symfony-debug.yaml, http/misconfiguration/laravel-debug-infoleak.yaml
+commit: 9419e84b01ba4a591a2396b5ed490eaa8f83c18a
+license: MIT
+note: verbose error-page / debug-mode info disclosure -> configs/signatures/error-disclosure.yaml errorInfo[] (PS-005/CWE-497).

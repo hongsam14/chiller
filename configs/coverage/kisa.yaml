@@ -32,10 +32,11 @@ items:
   - PS-026
 
 # item → the stage that covers it (delegated, not judged by chiller). R6.
+# PS-005/006 were promoted to observation-native signatures (r21) — they are now
+# JUDGED (see internal/scan/checking/observation), so they leave this delegation set
+# (an item is owned XOR delegated — coverage.New enforces disjointness).
 delegations:
   PS-014: ASM     # unnecessary HTTP methods
-  PS-005: Nuclei  # error page info disclosure
-  PS-006: Nuclei  # stack trace
   PS-026: Nuclei  # open redirect
 
 # ---------------------------------------------------------------------------

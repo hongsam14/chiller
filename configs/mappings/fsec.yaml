@@ -52,4 +52,7 @@ map:
   CWE-799:  { FSEC: [] }   # captcha absence (observation)
   CWE-798:  { FSEC: [] }   # default credentials (changeme)
   CWE-346:  { FSEC: [] }   # permissive CORS (corsy)
+  CWE-209:  { FSEC: [] }   # stack trace disclosure (observation, r21) — no FSEC item
+  CWE-497:  { FSEC: [] }   # error page info disclosure (observation, r21) — no FSEC item
+  CWE-359:  { FSEC: [] }   # PII exposure (observation, r21, 26-외) — no FSEC item
   no-canonical-cwe: { FSEC: [] }  # attacker-axis sentinel (subzy) — never silence (R8)

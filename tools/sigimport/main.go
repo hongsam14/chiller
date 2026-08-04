@@ -51,6 +51,12 @@ func run() error {
 	if err := genAPIDocs(); err != nil {
 		return fmt.Errorf("api-docs: %w", err)
 	}
+	if err := genExposureMarkers(); err != nil {
+		return fmt.Errorf("exposures: %w", err)
+	}
+	if err := genErrorDisclosure(); err != nil {
+		return fmt.Errorf("error-disclosure: %w", err)
+	}
 	return nil
 }
 
@@ -343,6 +349,273 @@ func collectAPIDoc(v any, paths, markers map[string]bool) {
 			}
 		}
 	}
+}
+
+// ---------- nuclei → exposures.yaml (PS-013 product exposure) ----------
+
+type exposuresOut struct {
+	Paths   []string `yaml:"paths"`
+	Markers []string `yaml:"markers"`
+}
+
+// genExposureMarkers distils product-exposure markers (Spring Boot actuator/env,
+// phpinfo, Apache server-status) from the pinned third_party/nuclei/exposures-product/
+// templates into exposures.yaml. adminPageSig (PS-013/CWE-306) substring-matches these
+// on a fetched body, with the path list feeding proactive well-known probing.
+func genExposureMarkers() error {
+	paths, markers, err := collectDir(filepath.Join(thirdParty, "nuclei", "exposures-product"))
+	if err != nil {
+		return err
+	}
+	out := exposuresOut{
+		Paths:   filter(sortedKeys(paths), distinctiveExposurePath),
+		Markers: filter(sortedKeys(markers), distinctiveExposureMarker),
+	}
+	banner := fmt.Sprintf("exposures — distilled from nuclei-templates exposures-product %s | paths %d markers %d (generic dropped)",
+		provenance("nuclei/exposures-product"), len(out.Paths), len(out.Markers))
+	return writeYAML("exposures.yaml", banner, out)
+}
+
+// distinctiveExposurePath keeps only product-exposure endpoints, dropping the generic
+// site paths nuclei carries (adminPageSig suffix-matches these against every 200 URL).
+// Bare "/env" is explicitly excluded: it is too generic a suffix (`/api/config/env`,
+// `/settings/env`) — the specific `/actuator/env` still matches via "actuator".
+func distinctiveExposurePath(p string) bool {
+	lp := strings.ToLower(strings.TrimRight(p, "/"))
+	if lp == "/env" {
+		return false
+	}
+	for _, tok := range []string{"actuator", "phpinfo", "server-status", "server-info", "h2-console"} {
+		if strings.Contains(lp, tok) {
+			return true
+		}
+	}
+	return false
+}
+
+// distinctiveExposureMarker keeps product-identifying strings and drops markers too
+// generic to CONFIRM an exposure (they match ordinary JSON/HTML/HAL responses).
+func distinctiveExposureMarker(m string) bool {
+	t := strings.TrimSpace(m)
+	switch strings.ToLower(t) {
+	case `"_links":`, `"self":`, `"health"`, "application/json", "paths", "status", "server version":
+		return false
+	}
+	if isAllDigits(t) { // numeric canaries (e.g. a template's response-size probe) confirm nothing
+		return false
+	}
+	return len(t) >= 6
+}
+
+// isAllDigits reports whether s is non-empty and entirely ASCII digits.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// ---------- nuclei + recon → error-disclosure.yaml (PS-005/006) ----------
+
+type errorDisclosureOut struct {
+	StackTrace []string `yaml:"stackTrace"`
+	ErrorInfo  []string `yaml:"errorInfo"`
+}
+
+// genErrorDisclosure distils framework stack-trace / debug-console markers (PS-006/
+// CWE-209) and verbose error-page / debug-mode markers (PS-005/CWE-497) from the pinned
+// nuclei-templates error dirs. Each literal nuclei marker is escaped to an RE2 pattern
+// (QuoteMeta); the stack-trace set is unioned with curated runtime frame regexes from
+// third_party/stackframe-patterns/ (format facts nuclei does not encode as literal words).
+func genErrorDisclosure() error {
+	stack, err := markersAsRE2(filepath.Join(thirdParty, "nuclei", "errors-stacktrace"))
+	if err != nil {
+		return err
+	}
+	frames, err := reconStackFrames()
+	if err != nil {
+		return err
+	}
+	stack = append(stack, frames...)
+	info, err := markersAsRE2(filepath.Join(thirdParty, "nuclei", "errors-info"))
+	if err != nil {
+		return err
+	}
+	out := errorDisclosureOut{StackTrace: dedupeSorted(stack), ErrorInfo: dedupeSorted(info)}
+	banner := fmt.Sprintf("error-disclosure — distilled from nuclei-templates %s + curated patterns frames %s | stackTrace %d errorInfo %d (generic dropped)",
+		provenance("nuclei/errors-stacktrace"), provenance("stackframe-patterns"), len(out.StackTrace), len(out.ErrorInfo))
+	return writeYAML("error-disclosure.yaml", banner, out)
+}
+
+// markersAsRE2 collects a dir's literal markers (words + dsl contains-literals),
+// keeps only the distinctive ones, and escapes each to an RE2 pattern.
+func markersAsRE2(dir string) ([]string, error) {
+	_, markers, err := collectDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	var skipped int
+	for _, m := range filter(sortedKeys(markers), distinctiveErrorMarker) {
+		pat := regexp.QuoteMeta(m)
+		if !re2ok(pat) { // QuoteMeta output is always RE2-safe; belt-and-braces
+			skipped++
+			continue
+		}
+		out = append(out, pat)
+	}
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "sigimport: error-disclosure skipped %d non-RE2 markers in %s\n", skipped, dir)
+	}
+	return out, nil
+}
+
+// distinctiveErrorMarker drops markers too generic to CONFIRM an error/stack-trace page
+// (a bare "error"/"exception"/"page not found" matches ordinary pages). Keep = not in
+// the denylist AND (≥18 chars, or a multi-word phrase ≥12 chars).
+func distinctiveErrorMarker(m string) bool {
+	t := strings.TrimSpace(m)
+	switch strings.ToLower(t) {
+	case "error", "exception", "warning", "debug", "trace", "fail", "page not found", "not found", "server error":
+		return false
+	}
+	if isAllDigits(t) {
+		return false
+	}
+	if len(t) >= 18 {
+		return true
+	}
+	return strings.Contains(t, " ") && len(t) >= 12
+}
+
+// reconStackFrames reads the curated RE2 runtime-frame patterns (1 per line, '#'
+// comments ignored), validating each compiles under RE2.
+func reconStackFrames() ([]string, error) {
+	// #nosec G304 -- fixed pinned vendored path (dev-time generator, not runtime).
+	b, err := os.ReadFile(filepath.Join(thirdParty, "stackframe-patterns", "stacktrace-frames.txt"))
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, ln := range strings.Split(string(b), "\n") {
+		ln = strings.TrimSpace(ln)
+		if ln == "" || strings.HasPrefix(ln, "#") {
+			continue
+		}
+		if !re2ok(ln) {
+			return nil, fmt.Errorf("stackframe-patterns frame not RE2: %q", ln)
+		}
+		out = append(out, ln)
+	}
+	return out, nil
+}
+
+// collectDir walks every *.yaml nuclei template in dir, collecting candidate paths
+// and body markers (matcher `words` + `dsl` contains-literals).
+func collectDir(dir string) (paths, markers map[string]bool, err error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	paths, markers = map[string]bool{}, map[string]bool{}
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) != ".yaml" {
+			continue
+		}
+		// #nosec G304 -- dir is a pinned vendored third_party/ path; name from ReadDir.
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return nil, nil, err
+		}
+		var doc any
+		if err := yaml.Unmarshal(b, &doc); err != nil {
+			continue
+		}
+		collectMarkers(doc, paths, markers)
+	}
+	return paths, markers, nil
+}
+
+var dslLiteral = regexp.MustCompile(`"([^"]+)"`)
+
+// collectMarkers walks a decoded nuclei template collecting paths (values starting
+// "/") and BODY markers from both `words` lists and `dsl` contains(...) literals. A
+// matcher whose `part: header` is skipped: those markers (e.g. Symfony's
+// `x-debug-token-link:`, Spring Boot's actuator Content-Type) live in response
+// headers, which the runtime signatures never scan — harvesting them would emit dead,
+// unmatchable rules.
+func collectMarkers(v any, paths, markers map[string]bool) {
+	switch n := v.(type) {
+	case map[string]any:
+		headerPart := false
+		if p, ok := n["part"].(string); ok && strings.EqualFold(p, "header") {
+			headerPart = true
+		}
+		for k, val := range n {
+			switch k {
+			case "words":
+				if !headerPart {
+					for _, w := range toStrings(val) {
+						if len(w) >= 3 {
+							markers[w] = true
+						}
+					}
+				}
+			case "dsl":
+				if !headerPart {
+					for _, expr := range toStrings(val) {
+						for _, lit := range dslLiteral.FindAllStringSubmatch(expr, -1) {
+							if s := lit[1]; len(s) >= 3 {
+								markers[s] = true
+							}
+						}
+					}
+				}
+			}
+			collectMarkers(val, paths, markers)
+		}
+	case []any:
+		for _, item := range n {
+			if s, ok := item.(string); ok {
+				if p := templatePath(s); p != "" {
+					paths[p] = true
+				}
+			} else {
+				collectMarkers(item, paths, markers)
+			}
+		}
+	}
+}
+
+// templatePath normalises a nuclei path payload to a bare "/path", handling both the
+// bare form ("/actuator/env") and the interpolated form ("{{BaseURL}}/actuator/env").
+// Returns "" when the value is not a path (so non-path list strings are ignored).
+func templatePath(s string) string {
+	if i := strings.Index(s, "{{BaseURL}}"); i >= 0 {
+		s = s[i+len("{{BaseURL}}"):]
+	}
+	if strings.HasPrefix(s, "/") && len(s) <= 40 && !strings.Contains(s, "{{") {
+		return s
+	}
+	return ""
+}
+
+func dedupeSorted(xs []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func toStrings(v any) []string {
