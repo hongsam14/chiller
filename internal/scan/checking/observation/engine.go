@@ -75,8 +75,8 @@ func New(rules Rules) []Signature {
 		cookieSecureSig{},                                                // PS-015
 		cookieHTTPOnlySig{},                                              // PS-016
 		cookieSameSiteSig{},                                              // PS-017
-		bodyMarkerSig{cwe: cweStackTrace, sub: "stacktrace", rules: rules.StackTrace}, // PS-006 (promoted from Nuclei r21)
-		bodyMarkerSig{cwe: cweErrorInfo, sub: "error-info", rules: rules.ErrorInfo},   // PS-005 (promoted from Nuclei r21)
+		bodyMarkerSig{cwe: cweStackTrace, sub: "stacktrace", rules: rules.StackTrace}, // 26-외 passive signal (PS-006→Nuclei, r22)
+		bodyMarkerSig{cwe: cweErrorInfo, sub: "error-info", rules: rules.ErrorInfo},   // 26-외 passive signal (PS-005→Nuclei, r22)
 		piiExposureSig{}, // PII exposure (26-외, CWE-359 r21)
 	}
 }

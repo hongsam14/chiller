@@ -32,10 +32,15 @@ items:
   - PS-026
 
 # item → the stage that covers it (delegated, not judged by chiller). R6.
-# PS-005/006 were promoted to observation-native signatures (r21) — they are now
-# JUDGED (see internal/scan/checking/observation), so they leave this delegation set
-# (an item is owned XOR delegated — coverage.New enforces disjointness).
+# PS-005/006 (error page / stack trace) are DELEGATED to Nuclei: honest end-to-end
+# detection needs an ACTIVE probe that elicits the error. chiller's passive stack-
+# trace/error signatures (CWE-209/497) still run, but they only see what a benign GET
+# already reveals — so they report as informational findings OUTSIDE the KISA-26
+# accounting (empty CWE projection in configs/mappings/kisa.yaml, like PII/CWE-359),
+# never claiming to "check" PS-005/006. (r22: reverts r21's observation-native promotion.)
 delegations:
+  PS-005: Nuclei  # error page info disclosure (active detection)
+  PS-006: Nuclei  # stack trace (active detection)
   PS-014: ASM     # unnecessary HTTP methods
   PS-026: Nuclei  # open redirect
 

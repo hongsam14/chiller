@@ -30,11 +30,14 @@ const (
 	cweCookieSecure   domain.CWE = "CWE-614"  // PS-015 (Secure)
 	cweCookieHTTPOnly domain.CWE = "CWE-1004" // PS-016 (HttpOnly)
 	cweCookieSameSite domain.CWE = "CWE-1275" // PS-017 (SameSite)
-	// Promoted from Nuclei delegation to observation-native (r21). Distinct owning
-	// CWEs (one-CWE-one-owner): stack trace is the archetypal CWE-209; the broader
-	// "error page leaks internal path/config/system info" case is CWE-497.
-	cweStackTrace domain.CWE = "CWE-209" // PS-006 (stack trace disclosure)
-	cweErrorInfo  domain.CWE = "CWE-497" // PS-005 (error page info disclosure)
+	// Passive stack-trace / error-page signals (r21 native → r22 informational). These
+	// checkers run and report, but PS-005/006 are DELEGATED to Nuclei (active detection
+	// elicits the error) — so CWE-209/497 map to an EMPTY KISA projection: a passively-
+	// seen stack trace is a 26-외 informational finding, never a PS-005/006 verdict.
+	// Distinct owning CWEs (one-CWE-one-owner): stack trace is the archetypal CWE-209;
+	// the broader "error page leaks internal path/config/system info" case is CWE-497.
+	cweStackTrace domain.CWE = "CWE-209" // stack trace disclosure (passive; PS-006→Nuclei)
+	cweErrorInfo  domain.CWE = "CWE-497" // error page info disclosure (passive; PS-005→Nuclei)
 	// PII exposure (r21) — outside the KISA-26 accounting set. Its CWE maps to an
 	// EMPTY KISA projection in configs/mappings/kisa.yaml, so it clears the boot
 	// totality check (KnownCWE) without being counted against any PS item.
