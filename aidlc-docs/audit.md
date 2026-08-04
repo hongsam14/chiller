@@ -1923,3 +1923,17 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **User Input**: (Code Gen P2 승인에 이어 Build and Test 진행)
 **AI Response**: r21 코드+리뷰수정 2커밋(5456a0c feat / 7eeb0c5 docs) 후 Build&Test. committed tree 전 로컬 게이트 green: build·build(integration)·vet·vet(integration)·gofmt clean·arch-check·go test ./... -race(0 FAIL/0 race)·gosec pinned(0)·secrets(84 commits no-leak, 신규 third_party/configs allowlist)·signatures-check(재생성 멱등 drift0)·lint(0)·coverage observation 85.8%. integration(testcontainers)는 Docker 위임(로컬 컴파일만). FP/FN 코퍼스+PBT(콜론값 회귀 포함)+파티션회계(boot-totality KISA+FSEC) 검증. 요약 recon-observation-build-and-test-summary.md. 불변: 26-파티션·소유권·CWE-359 회계0·FR-6·신규dep0·probe9. 승인 게이트: Operations 진행 여부.
 **Context**: CONSTRUCTION - Build and Test 완료(로컬 green), 승인 대기(r21).
+
+## Build and Test — 승인 → Operations (r21)
+**Timestamp**: 2026-08-04T06:05:00Z
+**User Input**: "Continue to Operations. 타겟은 `http://lab.roronoa.kr/`"
+**AI Response**: Build&Test 승인 → Operations. 사용자 지정 lab 타겟(lab.roronoa.kr)에 chiller in-process(--role=all, 백엔드불요) 실 스캔으로 r21 시그니처 end-to-end 검증. 수동 스캐너(GET-only+벤ign well-known+approved-host+rate 게이트) — 승인된 검증.
+**Context**: OPERATIONS - r21 실 타겟 검증 착수.
+
+## Operations 단계 도달 + 실 타겟 검증 (r21)
+**Timestamp**: 2026-08-04T06:20:00Z
+**User Input**: "Continue to Operations. 타겟은 `http://lab.roronoa.kr/`"
+**AI Response**: Operations 도달. chiller 빌드→in-process(`--role=all`, 백엔드불요) 기동, 사용자 지정 lab 타겟 `http://lab.roronoa.kr/`(approved: lab.roronoa.kr) 실 스캔. **부팅 게이트 OK**(26 항목 전부 소유/위임 — r21 boot-totality 실바이너리 확인). 스캔 완료(무크래시). Coverage 26-파티션 정합: checked 10+N/A 5=**15 observation judged**, tool-failed 9(probe 바이너리 없음·정직), **delegated 2(PS-014 ASM/PS-026 Nuclei)** — r21 4→2 확인. **PS-005/006 = checked**(위임→native 승격 end-to-end 실증). Findings 0(클린 홈페이지·실대상 오탐 없음). 신규 well-known(actuator/env·phpinfo·server-status) 스윕됨(CWE-306 12회). 서버 종료·임시파일 정리. production-readiness.md r21 증분 로그 추가, aidlc-state r21 CLOSED 블록 + Current Stage(11 post-MVP r7→r21) 갱신. r21 전 AI-DLC 단계 완료(Requirements→WP→FD→CodeGen P1/P2→코드리뷰→Build&Test→Operations). 남은 최상위 갭: 발견/서브도메인 스코프·changeme(PS-019). PR/병합은 사용자 판단.
+**Context**: OPERATIONS - r21 Operations 도달·실 타겟 검증, 증분 종료.
+
+---
