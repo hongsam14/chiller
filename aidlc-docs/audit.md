@@ -1937,3 +1937,11 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: OPERATIONS - r21 Operations 도달·실 타겟 검증, 증분 종료.
 
 ---
+
+## 신규 증분 — PS-005/006 Nuclei 위임 복원 + 수동 신호 26-밖 유지 (r22)
+**Timestamp**: 2026-08-04T06:45:00Z
+**User Input**: (직전) "그럼 PS-005/006 능동 상실이 무슨 말인지?" → (설명 후) "PS-006을 nuclei에 이관하는 기본 기조는 그대로 유지하고, 지금 구현된 PS-05, PS-06 observation은 자산 노출 쪽에 추가하면 안되나?" → "PS-005도 PS-006과 동일하게. 작업 진행"
+**AI Response**: r21에서 PS-005/006을 observation-native로 승격한 것을 **정직성 관점에서 되돌림**. 커버리지 회계와 수동 신호를 분리: (1) PS-005/006 → Nuclei 위임 복원(능동 검출은 Nuclei 책임, coverage에 정직히 delegated 표기) (2) 수동 시그니처 stackTraceSig/errorInfoSig(CWE-209/497)는 **계속 등록·발화**하되 mappings에서 `{KISA: []}` 빈 투영으로 변경 → **26-밖 정보노출 finding**(PII/CWE-359와 동일 패턴), PS-005/006 커버리지 사칭 안 함. branch feat/error-disclosure-passive(off main). 변경: coverage/kisa.yaml(delegations +PS-005/006=4)·mappings/kisa.yaml(CWE-209/497→{KISA:[]}, 주석 "22 covered/13 observation")·signatures.go/engine.go 주석·coverage_wiring_test(PS-005/006/026 delegated)·platform_e2e(회계 13/4)·README. fsec.yaml 무변경(이미 {FSEC:[]}). domain/coverage_test는 이미 PS-005/006=DelegateNuclei(정합). 전 게이트 green: build·vet·gofmt·arch-check·test-race(0)·boot-totality(KISA+FSEC PASS)·gosec pinned(0)·lint(0)·secrets no-leak·signatures-check drift0(시그니처 파일 무변경). 불변: 26 items·소유권(one-CWE-one-owner)·boot-totality·신규dep0·probe9. 시그니처 발화(코퍼스) 불변 — CWE-209/497 여전히 소유·발화.
+**Context**: OPERATIONS→신규 증분 r22, 실행 완료.
+
+---
