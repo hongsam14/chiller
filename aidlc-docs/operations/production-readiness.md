@@ -5,6 +5,25 @@
 
 The code is **green** (build/vet/gofmt/arch-check/`go test ./...`/`-race`). Below is what MUST happen before the durable backends run in production, and the honest limitations carried forward.
 
+## Increment log — PS-005/006 Nuclei 위임 복원 (r22, 2026-08-04)
+
+**Scope:** r21이 PS-005(오류 페이지)/PS-006(스택 트레이스)를 observation-native로 승격한 것을
+**정직성 관점에서 되돌림**. 수동 엔진은 벤ign GET 응답에 **이미 드러난** 에러/스택만 보고, 능동으로
+**유발**하지 못하는데도 coverage가 "checked"로 표기돼 과대 주장이 됐음(코드리뷰 PLAUSIBLE #7).
+
+**해소(회계 vs 신호 분리):** PS-005/006 → **Nuclei 위임 복원**(능동 검출 책임 명시, coverage
+정직 표기). 수동 시그니처 `stackTraceSig`/`errorInfoSig`(CWE-209/497)는 **계속 등록·발화**하되
+mappings에서 `{KISA: []}` 빈 투영 → **26-밖 정보노출 finding**(PII/CWE-359와 동일 패턴). 즉
+"이미 드러난" 스택은 수동으로 잡아 informational로 보고하고, "유발해야 나오는" 것은 Nuclei가 소유.
+
+**변경(config+test+docs only, 시그니처 로직 불변):** coverage/kisa.yaml(delegations 2→4:
++PS-005/006) · mappings/kisa.yaml(CWE-209/497→`{KISA:[]}`) · 주석·README. 26-파티션 회계는
+r16 시절 **13 observation / 9 probe / 4 delegated**로 복귀(+ 26-밖 관측 신호 3종: 스택·에러·PII).
+
+**전 게이트 green:** build·vet·gofmt·arch-check·`go test -race`(0)·**boot-totality(KISA+FSEC
+PASS**: PS-005/006 delegated로 totality 충족, CWE-209/497 KnownCWE·Project=[])·gosec pinned(0)·
+lint(0)·secrets no-leak·signatures-check drift0(시그니처 파일 무변경). 불변: 26 items·소유권·신규dep0·probe9.
+
 ## Increment log — recon 노하우 → observation 반영 (r21, 2026-08-04)
 
 **Scope:** OffenRed-AI-DAST passive/recon 노하우를 in-process observation 엔진에 흡수 —
