@@ -1794,3 +1794,15 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: OPERATIONS - r20 병합 완료, 상태 종결.
 
 ---
+
+## 남은 열린 항목 정리 (PR 백로그 소진)
+**Timestamp**: 2026-08-04T02:45:00Z
+**User Input**: "남은 열린 항목 정리해줘" → (정리 목록 제시 후) "dependabot 3건 리베이스+병합, docs PR 생성+병합"
+**AI Response**: 열린 항목을 4개 축으로 정리(① PR/브랜치 ② production-readiness blocking 6건 ③ 검출 갭 ④ 다음 증분 후보) 후 사용자가 고른 ①만 실행.
+- **dependabot 3건 supply-chain 실패 원인 규명**: PR 자체 결함 아님. `gitleaks detect --source`는 HEAD 조상뿐 아니라 **저장소의 모든 ref 커밋을 스캔**하고 CI가 `fetch-depth: 0`으로 체크아웃하므로, 2026-08-03 실행 당시 `origin/feat/evidence-enrichment`에 있던 커밋 `8f0f498`의 evidence 픽스처를 함께 스캔해 실패. 구 main(50d681d) 클론으로 재현 확인(78 commits, leaks 2, Commit=8f0f498). 브랜치가 구 main 기반이라 `.gitleaks.toml` allowlist 수정본을 미포함 → `@dependabot rebase`로 해소(리베이스 후 supply-chain 전부 SUCCESS, 진단 확증).
+- **병합**: #32(docs, r20 종결) → #30(actions/checkout 7.0.1) → #29(toml 1.6.0) → #31(retryablehttp-go 1.3.21). main tip `039b5ea`, **main CI 전 잡 green**(fast·integration·supply-chain·probe-integration; probe-fixture-positive는 opt-in skip).
+- **브랜치 정리**: 로컬 `fix/ps009-capture-group`(병합됨)·원격 `feat/evidence-enrichment`(병합됨) 삭제, `git remote prune`. **열린 PR 0건.**
+- 미실행(사용자 보류): production-readiness blocking 6건(#1 Docker 통합 스위트 실행·#2 Go≥1.26.5 GO-2026-5856·#0b 베이스/git툴 digest 핀·#3 이미지 digest·#4/#5 시크릿+TLS/auth·#6 CI 배선) · 검출 갭(발견/서브도메인 스코프·changeme PS-019·infra §2/§4·#3/#5/#6) · 다음 증분 후보(recon 노하우 → observation, recon 파일 경로 필요).
+**Context**: OPERATIONS - PR 백로그 소진, 잔여 항목 대장화.
+
+---
