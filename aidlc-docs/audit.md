@@ -1806,3 +1806,114 @@ Gates green: build, vet (+integration), gofmt, arch-check, go test -race ./... (
 **Context**: OPERATIONS - PR 백로그 소진, 잔여 항목 대장화.
 
 ---
+
+## 신규 증분 착수 — recon 노하우 → observation 반영 (r21)
+**Timestamp**: 2026-08-04T03:00:00Z
+**User Input**: "다음 증분 후보 작업: recon 노하우를 observation에 반영하는 작업을 ai-dlc로 진행. @../OffenRed-AI-DAST/stages/ 에서 노하우를 추출"
+**AI Response**: AI-DLC brownfield 증분 착수. 워크스페이스 detection=resume(aidlc-state.md 존재, greenfield-informed-by-brownfield, r20까지 완료·전 PR 병합). 공통 규칙(process-overview/session-continuity/content-validation/question-format-guide) + requirements-analysis.md + 3 extension opt-in(security/resiliency/property-based) 로드. recon 소스 `/home/thinkpad/Desktop/src/OffenRed-AI-DAST/stages/` 확인(passive 관련: stage2c_passive.py 996L·stage2c_passive_v2.py 820L·stage2c_signal_patterns.py 363L·stage2c_passive_no_surface_agent.py·stage2c_passive_sensitive_agent.py·response_signals.py·js_analyzer.py). Requirements Analysis 착수 — passive 노하우 추출 후 한글 명확화 질문.
+**Context**: INCEPTION - Requirements Analysis 착수(r21).
+
+---
+
+## Requirements Analysis — 노하우 추출 + 명확화 질문 제시 (r21)
+**Timestamp**: 2026-08-04T03:20:00Z
+**User Input**: (증분 착수에 이어 Requirements Analysis 자동 진행)
+**AI Response**: OffenRed-AI-DAST passive/recon 소스 정독(stage2c_passive.py:_verify 시그니처 카탈로그·stage2c_passive_sensitive_agent.py·stage2c_passive_no_surface_agent.py·response_signals.py·stage2c_signal_patterns.py) + chiller observation 13 시그니처(signatures.go)·well-known(wellknown.go)·KISA 26 매핑(configs/coverage/kisa.yaml) 대조. 노하우 7건 추출·매핑: K1 백업 본문 매직(PK/SQLite/dump→PS-012 강화, observation 소유)·K2 관리/디스클로저 제품 마커(actuator env/phpinfo/h2/apache status→PS-013, 소유)·K3 추가 시크릿 패턴(stripe/slack/gh/npm/jwt/aws→PS-009, 소유)·K4 에러/스택/디버그 마커(→PS-005/006 Nuclei 위임 ⚠️)·K5 PII/주민번호(→KISA 26 슬롯 없음 ⚠️)·K6 .DS_Store(소유 불명 ⚠️)·K7 디렉터리목록(→PS-004 dirhunt probe 소유 ⚠️). 판단: K1-K3=in-partition 강화(불변), K4-K7=소유권/파티션 경계 결정 필요. requirement-verification-questions.md 작성(한글 8문항: 핵심범위·시크릿대조·에러위임승격·PII·DSStore/디렉터리·well-known경로·검증수준·확장유지). GATE: 사용자 답변 대기.
+**Context**: INCEPTION - Requirements Analysis 질문 제시, 답변 대기(r21).
+
+---
+
+## Requirements Analysis — 답변 접수 + requirements.md 작성 (r21)
+**Timestamp**: 2026-08-04T03:45:00Z
+**User Input**: "답변 완료" (requirement-verification-questions.md: Q1=A · Q2=A · Q3=B[nuclei-templates 레포에서 증류, 기존 경험] · Q4=B[CWE 분류 후 coverage/mapping 매핑] · Q5=B · Q6=A · Q7=A · Q8=A)
+**AI Response**: 답변 정합성 점검 — 모순 없음. 코드 메커니즘으로 파티션 변경 3건의 안전성 검증: (1) boot totality 체크 coverage.go:48은 owned CWE가 mappings.KnownCWE이거나 NoCanonicalCWE면 통과 → Q4=B PII는 `CWE-359:{KISA:[]}` 빈 투영(subzy no-canonical-cwe sentinel 동일 패턴)로 26 회계 불변; (2) Q3=B PS-005/006은 coverage delegations 제거(4→2)+mappings 신규 CWE 추가로 native 승격(observation 13→15), items 26 목록 불변; (3) Q5=B .DS_Store는 기존 gitExposureSig(CWE-527) 내부 확장 — one-CWE-one-owner 유지(신규 시그니처 아님). CWE 번호는 C-5 관례상 FD에서 핀(후보만 비구속 기록). requirements-recon-observation.md 작성: FR-1(PS-012 백업매직) FR-2(PS-013 마커+well-known Q6=A) FR-3(PS-009 갭시크릿 대조) FR-4(PS-005/006 nuclei-templates pinned 증류 native 승격, 수동성 유지, 파티션 회계 갱신) FR-5(PII 26-밖 CWE-359 빈투영) FR-6(.DS_Store PS-010 편입) FR-7(FP/FN 코퍼스+PBT FULL+통합). 불변 명시(OSS-증류/소유권/FR-6/26-items/boot-totality/RE2). Extension Q8=A 캐리포워드(변경 없음). aidlc-state Current Stage에 r21 라인 추가. 승인 게이트 제시.
+**Context**: INCEPTION - Requirements Analysis 완료, 승인 대기(r21).
+**Approval prompt (logged before asking)**: "Approve & Continue → Workflow Planning" 여부 질의.
+
+---
+
+## Requirements Analysis — 승인 (r21)
+**Timestamp**: 2026-08-04T03:50:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: requirements-recon-observation.md 승인. branch feat/recon-observation 생성(off main). Workflow Planning 착수 — EXECUTE/SKIP 결정 + Risk 산정 + 실행순서 시각화.
+**Context**: INCEPTION - Requirements 승인 → Workflow Planning(r21).
+
+## Workflow Planning — 실행계획 작성 (r21)
+**Timestamp**: 2026-08-04T03:55:00Z
+**User Input**: (Requirements 승인에 이어 Workflow Planning 자동 진행)
+**AI Response**: execution-plan-recon-observation.md 작성. Risk=Medium(파티션 회계 변경 있으나 boot-totality 안전망+26 items·소유권·probe 불변, nuclei-templates 증류는 r16 검증방식). EXECUTE 4(Functional Design·Code Generation·Build and Test·Operations) / SKIP 6(Reverse[완료]·User Stories·App Design·Units Gen·NFR Req/Design·Infra Design). Functional Design EXECUTE 근거: 신규 시그니처(PS-005/006/PII) 판정규칙 + owning CWE 확정(C-5) + nuclei-templates 증류셋/pinned SHA + PII 마스킹 + 백업매직/.DS_Store 편입 + 파티션 회계갱신 설계. Mermaid 시각화(styling 규칙 준수). 단일 유닛=scan/observation. aidlc-state 갱신. 승인 게이트 제시.
+**Context**: INCEPTION - Workflow Planning 완료, 승인 대기(r21).
+**Approval prompt (logged before asking)**: "Approve & Continue → Functional Design" 여부 질의.
+
+---
+
+## Workflow Planning — 승인 (r21)
+**Timestamp**: 2026-08-04T04:00:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: execution-plan-recon-observation.md 승인. Functional Design 착수 — 신규 시그니처 판정규칙·owning CWE 확정(C-5)·nuclei-templates 증류셋/pinned SHA·PII 마스킹·백업매직·.DS_Store 편입·파티션 회계갱신 설계. 증류 파이프라인(signatures_config.go/tools/sigimport/third_party) 정독 후 작성.
+**Context**: INCEPTION - Workflow Planning 승인 → Functional Design(r21).
+
+## Functional Design — 작성 (r21)
+**Timestamp**: 2026-08-04T04:15:00Z
+**User Input**: (Workflow Planning 승인에 이어 FD 자동 진행)
+**AI Response**: recon-observation-functional-design.md 작성. 실코드 grounding + 파티션 커널 불변식 5개(coverage.go New(): INV-1 KnownCWE·INV-2 item∈spec·INV-3 owned XOR delegated·INV-4 totality·INV-5 Project=[]→회계0). FD-0 CWE 확정(C-5 핀): PS-005=CWE-497·PS-006=CWE-209(상호구분)·PII=CWE-359{KISA:[]}·.DS_Store=CWE-527기존·백업매직=CWE-530기존. FD-1(백업 매직 looksLikeArchive, 경로/이름 가드 유지로 매직-only FP 차단) FD-2(PS-013 nuclei 증류 exposures.yaml+well-known 6경로, 콘텐츠마커 필수) FD-3(PS-009 갭검증 예상 NO-OP) FD-4(PS-005/006 native: genErrorDisclosure→error-disclosure.yaml, stackTraceSig/errorInfoSig inline, delegations 삭제+mappings 추가, 13→15) FD-5(PII inline piiExposureSig, 필드-키 앵커, maskPII 값마스킹·offset보존, CWE-359 {KISA:[]} 26-밖) FD-6(.DS_Store gitExposureSig 편입, Bud1 매직, /.DS_Store well-known) FD-7(third_party/nuclei vendoring pinned SHA+생성기 2함수, 런타임미사용·신규dep0) FD-8(로더 fail-closed 확장) FD-9(FP/FN 코퍼스+PBT FULL 5속성+통합). Open→CodeGen: pinned SHA/템플릿목록·gitleaks 갭대조·마커셋. 2옵션 게이트.
+**Context**: CONSTRUCTION - Functional Design 완료, 승인 대기(r21).
+
+## Functional Design — FD-7 증류 파이프라인 구체화 (r21)
+**Timestamp**: 2026-08-04T04:30:00Z
+**User Input**: "nuclei-template 레포에서 데이터 증류를 하는 법을 더 자세히 구체화"
+**AI Response**: 기존 vendored nuclei 템플릿 실측(swagger-api.yaml/openapi.yaml: http.payloads.paths+matchers.words 구조, collectAPIDoc가 이미 파싱)·SOURCE 핀형식(repo/files/commit 4924c84/license) 확인 후 FD-7 대폭 상세화. FD-7a Vendoring(디렉터리=타깃 라우팅, 기존 exposures-apis 방식): exposures-product/(springboot actuator/env·phpinfo·apache status·h2→genExposureMarkers→exposures.yaml PS-013)·errors-stacktrace/(django/laravel-whoops/symfony/werkzeug→stackTrace PS-006)·errors-info/(whitelabel/debug-mode→errorInfo PS-005), 디렉터리별 SOURCE, 후보파일 정직성(Code Gen에서 pinned SHA 체크아웃해 존재파일만 vendor·실 words 반영·누락 stderr 로깅). FD-7b 추출 알고리즘+worked example(collectAPIDoc 재사용, distinctiveExposurePath/Marker·distinctiveErrorMarker 필터, QuoteMeta로 리터럴→RE2 승격, springboot-env/django-debug 예시). FD-7c recon 구조적 스택프레임(nuclei가 words로 안 담는 Java/Node/PHP 프레임 shape→third_party/offenred-recon/stacktrace-frames.txt 큐레이트 RE2 6패턴 provenance, union, 손수금지 규율 유지). FD-7d 배선/재현성(신규dep0·런타임미사용·signatures-check drift0·gitleaks allowlist). FD-8 로더 필드타입 정렬(ExposureRules substring·StackTrace/ErrorInfo []*regexp.Regexp fail-closed·nil-safe). 정직성: nuclei 경로/파일명은 후보, Code Gen vendoring에서 실측 확정.
+**Context**: CONSTRUCTION - FD 증류 파이프라인 구체화(Request Changes 반영), 재승인 대기(r21).
+
+## Functional Design — 승인 (r21)
+**Timestamp**: 2026-08-04T04:35:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: recon-observation-functional-design.md(FD-7 증류 구체화 포함) 승인. Code Generation Part 1(계획) 착수 — recon-observation-code-generation-plan.md 작성.
+**Context**: CONSTRUCTION - FD 승인 → Code Gen P1(r21).
+
+## Code Generation Part 1 — 계획 작성 (r21)
+**Timestamp**: 2026-08-04T04:45:00Z
+**User Input**: (FD 승인에 이어 Code Gen P1 자동 진행)
+**AI Response**: recon-observation-code-generation-plan.md 작성. nuclei-templates GitHub 접근 확인(HEAD 9419e84) → Code Gen P2에서 pinned SHA 실 클론·vendoring 가능(후보경로 정직성 해소). 9 스텝: A(vendoring pinned+provenance, 부재템플릿 누락금지 로깅) B(생성기 genExposureMarkers/genErrorDisclosure, collectAPIDoc 재사용, QuoteMeta→RE2, recon union, signatures-check drift0) C(domain CWE 209/497/359 상수+hyp) D(회계: coverage delegations PS-005/006 삭제·mappings 3 CWE 추가) E(시그니처: 백업매직 looksLikeArchive 경로가드유지·.DS_Store gitExposureSig편입·stackTraceSig/errorInfoSig inline·adminPageSig exposures브랜치·piiExposureSig maskPII) F(로더 fail-closed+레지스트리 13→15+well-known 7경로) G(gitleaks 갭대조 예상NO-OP) H(FP/FN 코퍼스+PBT FULL 5속성+파티션회계 테스트) I(통합 e2e+전게이트+요약/README). 각 스텝 부분빌드 수용기준. 불변·신규dep0. 2옵션 게이트.
+**Context**: CONSTRUCTION - Code Gen P1 계획 완료, 승인 대기(r21).
+
+## Code Generation Part 1 — 자기검증(근거추출→요구사항/디자인 필터→플랜 리뷰) + 정정 (r21)
+**Timestamp**: 2026-08-04T05:00:00Z
+**User Input**: "플랜의 근거를 추출. 추출한 근거를 요구사항과 디자인을 참고하여 리뷰. 리뷰가 완료된 적절한 근거를 기반으로 플랜을 리뷰"
+**AI Response**: 실코드 대조 자기검증. 근거 P-R1~P-R10 추출→필터. 유효: P-R1(collectAPIDoc 재사용)·P-R3(disjoint INV-3)·**P-R4(CWE-359 {KISA:[]} 회계0 — Account가 spec.Items만 순회, 실코드 확증)**·P-R9(ownership 자동). 정정 필요: P-R2(mappings breakdown "(10obs+12probe)"도 낡음)·P-R5/6(매직=FN이 아니라 FP축소, `(name||wellknown)&&magic`은 중복→name&&magic)·P-R7(provenance 서브디렉터리 지원→단일SHA bump 불요, api-docs 불변)·P-R8(offenred-recon 내부동일조직·형식사실만→LICENSE불요)·P-R10(severity 미핀). 플랜 정정 6건: PD-A(E1 매직 FP축소 재정의, 매직-only 금지)·PD-B(A1/A5 독립핀·api-docs불변)·PD-C(D2 주석 완전갱신 "24 covered/15obs+9probe/delegated PS-014,026")·PD-D(A5 LICENSE불요 provenance만)·PD-E(F2/H3 CWE-359 finding이 Account/report 에러없이 통과 명시단언)·PD-F(E6 severity 핀 RRN High/contact Medium). 자기검증절 플랜에 추가. 긍정: Q4=B 핵심 안전성 실코드 확증으로 리스크 해소. 2옵션 게이트 유지.
+**Context**: CONSTRUCTION - Code Gen P1 자기검증 완료, 정정 반영, 승인 대기(r21).
+
+## Code Generation Part 2 — 생성 착수 (r21)
+**Timestamp**: 2026-08-04T05:05:00Z
+**User Input**: "Continue to Next Stage"
+**AI Response**: Part 2 코드 생성 실행. 플랜 A→I 순서(vendoring→생성기→domain→회계→시그니처→로더/레지스트리/well-known→갭대조→테스트→통합/게이트) 증분 빌드.
+**Context**: CONSTRUCTION - Code Gen P2 생성 착수(r21).
+
+## Code Generation Part 2 — 완료 (r21)
+**Timestamp**: 2026-08-04T05:30:00Z
+**User Input**: (Code Gen P1 자기검증 승인에 이어 P2 생성)
+**AI Response**: 플랜 A~I 전 스텝 완료, 전 로컬 게이트 GREEN. A: nuclei-templates pinned `9419e84` 실 클론(sparse)→exposures-product(actuator/env/phpinfo/apache-status)·errors-stacktrace(laravel-whoops/flask-werkzeug/rails)·errors-info(django/laravel/symfony) vendor + offenred-recon/stacktrace-frames.txt(6 RE2). **정직 편차: H2 콘솔·범용 apache server-info는 핀에 템플릿 부재→제외**(SOURCE note). B: 생성기 genExposureMarkers/genErrorDisclosure(collectDir/collectMarkers words+dsl 리터럴, QuoteMeta→RE2, distinctive+all-digit 필터, recon union)→exposures.yaml(paths17/markers12)·error-disclosure.yaml(stack9/info10), 멱등. C: CWE 상수 209/497/359+hyp. D: coverage delegations PS-005/006 삭제(4→2)·mappings KISA+FSEC에 3 CWE(497/209 투영·359 빈투영)·주석 갱신. E: backupFileSig 매직(FP축소, name게이트 유지)·gitExposureSig .DS_Store(Bud1)·adminPageSig exposures 브랜치·stackTraceSig/errorInfoSig·piiExposureSig(maskPII). F: 로더 fail-closed+레지스트리 16 registered+well-known 6경로. G: gitleaks 갭 NO-OP 확인(221 rules 이미 커버). H: recon_observation_test.go FP/FN 코퍼스+PBT(PII 값 미노출·offset 원문 재로케이트). 파급 수정 6곳(카운트16·ownership23·coverage-wiring·e2e 회계15/2+rate·fail-closed 픽스처). I: e2e 26-파티션 통과·요약·README. 게이트: build·vet·gofmt·arch-check·test-race(0)·lint(0)·gosec pinned(0)·secrets(no leaks)·signatures-check(drift0). 불변: 26 items·소유권·boot-totality(KISA+FSEC)·CWE-359 회계0·FR-6 소유-only·RE2·신규dep0·probe9. 플랜 A1~I3 전부 [x]. 표준 2옵션 완료 게이트.
+**Context**: CONSTRUCTION - Code Gen P2 완료, 승인 대기(r21).
+
+## 코드 리뷰(/code-review high, workflow 20 agents) + 수정 (r21)
+**Timestamp**: 2026-08-04T05:45:00Z
+**User Input**: "/code-review 이번 단계 작업물 코드리뷰" → (findings 보고 후 수정)
+**AI Response**: workflow-backed high 리뷰(20 에이전트, finder 4 angle→18 후보→14 검증→10 확정, 17→10 dedup, 1 refuted[e2e rate는 safety.go Acquire가 blocking이라 무해]). 10건 중 8 수정 + 2 의도적 trade + 회귀:
+- F1(🔴 maskPII 값 누출): LastIndex(":")가 email 값 콜론 분할 → 키 닫는따옴표 기준 값 전체 마스킹. 회귀 콜론값 PBT.
+- F2(🟠 resident-id 오탐): 무앵커 정규식 → YYMMDD 생일유효성+경계가드. 회귀 bad-month.
+- F3(🟠 email/phone 미탐): 정확키만 → 키 [\w]* 접두확장(phone bare tel 제거). 회귀 userEmail/mobilePhone 양성+telemetry 음성.
+- F4(🟠 symfony 헤더마커 죽은규칙): 생성기 part:header 마커 스킵(exposures content-type도 제거).
+- F5(⚪ /env 접미 오탐): distinctiveExposurePath에서 bare /env 제외.
+- F8(⚪ /actuator/health 죽은 probe): well-known 제거.
+- F9(⚪ FindAllIndex 낭비): 비-resident-id FindIndex.
+- F10(⚪ 복붙 중복): bodyMarkerSig 단일 타입(distinct 인스턴스 one-CWE-one-owner 유지).
+- F6 skipped(의도 trade): stackTrace 게이트 없음 코드-전시 오탐 — 수동탐지 본질적 한계, OSS-증류 마커 유지, 문서화 수용.
+- F7 no_change_needed(의도): PS-005/006 위임→수동 승격은 Q3=B 사용자 결정, coverage Checked 설계대로.
+전 게이트 재검 green(build/vet/gofmt/arch-check/-race/lint0/gosec0/secrets no-leak/signatures-check 멱등). 신규 회귀 5+ 케이스. 26-파티션·소유권·boot-totality·신규dep0 불변. 요약 recon-observation-summary.md에 리뷰절 추가.
+**Context**: CONSTRUCTION - Code Gen P2 코드리뷰+수정 완료(r21), 승인 대기.
+
+## Code Generation Part 2 — 승인 (r21)
+**Timestamp**: 2026-08-04T05:50:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: Code Gen P2(코드리뷰 8수정 포함) 승인. 커밋 후 Build and Test — 전 로컬 게이트 + 코퍼스/PBT + 26-파티션/boot-totality 불변 재확인.
+**Context**: CONSTRUCTION - Code Gen P2 승인 → Build and Test(r21).
