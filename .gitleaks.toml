@@ -38,4 +38,6 @@ paths = [
 regexes = [
   '''eyJhbGciOiJIUzI1NiJ9\.eyJ1c2VyIjoiYWRtaW4ifQ\.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c''',
   '''sk_live_abc123def456''',
+  # r20 evidence seal round-trip fixtures (findings/store + platform/taskstore).
+  '''AbCdEf0123456789''',
 ]
