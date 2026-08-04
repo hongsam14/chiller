@@ -83,7 +83,7 @@ func seedFinishedScan(t *testing.T, store platform.TaskStore, id domain.ScanID) 
 		TargetURL:  "https://x.test/login",
 		SourceTool: "observation:CWE-614",
 		Severity:   domain.SevMedium,
-		Evidence:   domain.Evidence{Snippets: []string{"Set-Cookie: SESSION=s3cret"}},
+		Evidence:   domain.EvidenceOf("Set-Cookie: SESSION=s3cret"),
 	}
 	// Claim then record, the way a worker does.
 	lease := platform.Lease{Owner: "w1", Expiry: 1 << 40}
@@ -205,7 +205,7 @@ func TestFinalize_PurgesLedgerEvidence(t *testing.T) {
 
 	// Before finalize, the ledger is the only place the evidence exists.
 	before, _ := store.AllOutcomes(ctx, "scan-purge")
-	if len(before) != 1 || len(before[0].Findings[0].Evidence.Snippets) == 0 {
+	if len(before) != 1 || len(before[0].Findings[0].Evidence.SnippetStrings()) == 0 {
 		t.Fatal("precondition: the ledger should be carrying the evidence")
 	}
 
@@ -216,7 +216,7 @@ func TestFinalize_PurgesLedgerEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stored) != 1 || len(stored[0].Evidence.Snippets) != 1 || stored[0].Key() != want.Key() {
+	if len(stored) != 1 || len(stored[0].Evidence.SnippetStrings()) != 1 || stored[0].Key() != want.Key() {
 		t.Fatalf("the findings store should own the evidence now, got %+v", stored)
 	}
 	// ...and the ledger does not.
@@ -224,7 +224,7 @@ func TestFinalize_PurgesLedgerEvidence(t *testing.T) {
 	if len(after) != 1 {
 		t.Fatal("purge must not delete the outcome itself — resume and accounting still need it")
 	}
-	if len(after[0].Findings[0].Evidence.Snippets) != 0 {
+	if len(after[0].Findings[0].Evidence.SnippetStrings()) != 0 {
 		t.Error("the ledger is still holding a second copy of the evidence after finalize")
 	}
 	// The rest of the outcome survives: it is what the ledger is actually for.
@@ -264,12 +264,12 @@ func TestFinalize_SecondFinalizerDoesNotDestroyEvidence(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("got %d findings, want 1", len(got))
 	}
-	if len(got[0].Evidence.Snippets) == 0 {
+	if len(got[0].Evidence.SnippetStrings()) == 0 {
 		t.Fatal("the second finalizer overwrote the stored findings with evidence-less ones — " +
 			"the evidence justifying this finding is permanently gone")
 	}
-	if got[0].Evidence.Snippets[0] != want.Evidence.Snippets[0] {
-		t.Errorf("evidence changed: %v", got[0].Evidence.Snippets)
+	if got[0].Evidence.SnippetStrings()[0] != want.Evidence.SnippetStrings()[0] {
+		t.Errorf("evidence changed: %v", got[0].Evidence.SnippetStrings())
 	}
 	if got[0].Key() != want.Key() {
 		t.Error("the finding's identity changed")
@@ -320,7 +320,7 @@ func TestFinalize_DoesNotPurgeWhenTheSaveFailed(t *testing.T) {
 		t.Errorf("a scan whose findings could not be stored must fail, got %v", s.State)
 	}
 	after, _ := store.AllOutcomes(ctx, "scan-nosave")
-	if len(after) != 1 || len(after[0].Findings[0].Evidence.Snippets) == 0 {
+	if len(after) != 1 || len(after[0].Findings[0].Evidence.SnippetStrings()) == 0 {
 		t.Fatal("the ledger's evidence was purged even though the save failed — the findings are now gone entirely")
 	}
 }

@@ -46,6 +46,16 @@ func TestDistilled_PS009_Secrets(t *testing.T) {
 		// ---- FP: benign minified first-party JS (`password:!0`) has no high-entropy secret ----
 		{"FP jquery-style password flag", jsCtx("https://h/", "https://h/app.js", `return{password:!0,persistent:!0,remember:!1};`), false},
 		{"FP ordinary comment", wctx("https", 200, "<!-- build 2024-01-02, contact webmaster -->", "https://h/"), false},
+
+		// ---- FP: an `apiKey = value` whose RHS is an unquoted VARIABLE REFERENCE,
+		// not a literal secret (the kbland.kr KBSignCertPlus.js FP). gitleaks'
+		// generic-api-key `^[a-zA-Z_.-]+$` allow excuses an identifier/member-
+		// expression value; it only bites once the allow is evaluated against the
+		// captured secret rather than the whole `apiKey = …` match. ----
+		{"FP apiKey assigned from member expression", jsCtx("https://h/", "https://h/libs/KBSignCertPlus.js", `function f(){params.apiKey = KBSignCertPlus.apiKey;params.signPlanText = t;}`), false},
+		{"FP apiKey assigned from identifier", jsCtx("https://h/", "https://h/app.js", `const key = config.apiKey;`), false},
+		// ---- FN: a real quoted generic api key (digits ⇒ not the identifier allow) still fires ----
+		{"FN quoted generic api key", jsCtx("https://h/", "https://h/app.js", `var c={apiKey:"AbCdEf0123456789ghIJ"};`), true},
 	}
 	runFireCases(t, sig, cases)
 }

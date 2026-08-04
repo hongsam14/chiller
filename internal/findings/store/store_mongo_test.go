@@ -87,7 +87,7 @@ func TestMongo_EvidenceIsEncryptedAtRest(t *testing.T) {
 	}
 	f := domain.Finding{
 		CWEs: []domain.CWE{"CWE-614"}, TargetURL: "https://x.test/y", SourceTool: "obs",
-		Severity: domain.SevCritical, Evidence: domain.Evidence{Snippets: []string{secret}},
+		Severity: domain.SevCritical, Evidence: domain.EvidenceOf(secret),
 	}
 	if err := s.SaveFindings(ctx, "scan-1", []domain.Finding{f}); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestMongo_EvidenceIsEncryptedAtRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Evidence.Snippets[0] != secret {
+	if len(got) != 1 || got[0].Evidence.SnippetStrings()[0] != secret {
 		t.Fatalf("evidence did not round-trip: %+v", got)
 	}
 

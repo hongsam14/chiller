@@ -10,7 +10,7 @@ import (
 )
 
 func f(cwe domain.CWE, url, tool string, sev domain.Severity, snip string) domain.Finding {
-	return domain.Finding{CWEs: []domain.CWE{cwe}, TargetURL: url, SourceTool: tool, Severity: sev, Evidence: domain.Evidence{Snippets: []string{snip}}}
+	return domain.Finding{CWEs: []domain.CWE{cwe}, TargetURL: url, SourceTool: tool, Severity: sev, Evidence: domain.EvidenceOf(snip)}
 }
 
 func keys(fs []domain.Finding) []string {
@@ -35,8 +35,8 @@ func TestDedup_CollapsesSameIdentity(t *testing.T) {
 	if out[0].Severity != domain.SevHigh {
 		t.Errorf("collapse should take max severity, got %v", out[0].Severity)
 	}
-	if len(out[0].Evidence.Snippets) != 2 {
-		t.Errorf("evidence should union, got %v", out[0].Evidence.Snippets)
+	if len(out[0].Evidence.SnippetStrings()) != 2 {
+		t.Errorf("evidence should union, got %v", out[0].Evidence.SnippetStrings())
 	}
 }
 

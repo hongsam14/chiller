@@ -76,6 +76,8 @@ const reportHTML = `<!doctype html>
   .f-tool { font-size: 0.78rem; font-weight: 600; }
   .f-url { font-size: 0.78rem; color: var(--deleg); word-break: break-all; margin: 0.25rem 0; }
   .f-ev { margin: 0.2rem 0 0; padding: 0.4rem 0.6rem; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 0.76rem; white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
+  .f-evmeta { margin: 0.15rem 0 0; font-size: 0.72rem; color: var(--deleg); word-break: break-all; }
+  .f-evhyp { margin: 0.1rem 0 0.3rem; font-size: 0.72rem; font-style: italic; color: var(--deleg); }
   @media print { .noprint { display: none; } body { padding: 0; } .hero, .stage { break-inside: avoid; } }
 </style>
 </head>
@@ -230,7 +232,19 @@ const reportHTML = `<!doctype html>
           (f.cwes||[]).forEach(function (c){ if (c && c !== "no-canonical-cwe") head.appendChild(el("span","badge", c)); });
           box.appendChild(head);
           if (f.targetUrl) { var u = el("div","f-url"); u.textContent = f.targetUrl; box.appendChild(u); }
-          (f.evidence||[]).forEach(function (ev) { box.appendChild(el("pre","f-ev", ev)); });
+          // Evidence items are structured (r20): render the snippet, with small badges
+          // for the firing rule and match location when present (probe items have none).
+          (f.evidence||[]).forEach(function (ev) {
+            box.appendChild(el("pre","f-ev", ev.snippet || ""));
+            var meta = [];
+            if (ev.rule) meta.push(ev.rule);
+            if (ev.location && ev.location.part) {
+              meta.push(ev.location.part + (ev.location.name ? ":" + ev.location.name : "")
+                + (ev.location.sourceUrl ? " @" + ev.location.sourceUrl : ""));
+            }
+            if (meta.length) box.appendChild(el("div","f-evmeta", meta.join(" · ")));
+            if (ev.hypothesis) box.appendChild(el("div","f-evhyp", ev.hypothesis));
+          });
           dc.appendChild(box);
         });
         dr.appendChild(dc); rows.appendChild(dr);
