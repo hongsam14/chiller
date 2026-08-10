@@ -7,7 +7,7 @@ require (
 	github.com/andybalholm/brotli v1.2.2
 	github.com/klauspost/compress v1.19.1
 	github.com/playwright-community/playwright-go v0.5200.1
-	github.com/projectdiscovery/retryablehttp-go v1.3.21
+	github.com/projectdiscovery/retryablehttp-go v1.3.22
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.43.0
@@ -40,7 +40,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/gaissmai/bart v0.28.1 // indirect
+	github.com/gaissmai/bart v0.29.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -71,9 +71,9 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
-	github.com/projectdiscovery/fastdialer v0.5.13 // indirect
+	github.com/projectdiscovery/fastdialer v0.5.14 // indirect
 	github.com/projectdiscovery/hmap v0.0.101 // indirect
-	github.com/projectdiscovery/networkpolicy v0.1.43 // indirect
+	github.com/projectdiscovery/networkpolicy v0.1.44 // indirect
 	github.com/projectdiscovery/retryabledns v1.0.115 // indirect
 	github.com/projectdiscovery/utils v0.11.1 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
