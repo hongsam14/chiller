@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/andybalholm/brotli v1.2.2
-	github.com/klauspost/compress v1.19.1
+	github.com/klauspost/compress v1.19.2
 	github.com/playwright-community/playwright-go v0.5200.1
 	github.com/projectdiscovery/retryablehttp-go v1.3.21
 	github.com/redis/go-redis/v9 v9.21.0
