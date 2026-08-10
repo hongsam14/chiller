@@ -8,7 +8,7 @@ require (
 	github.com/klauspost/compress v1.19.1
 	github.com/playwright-community/playwright-go v0.5200.1
 	github.com/projectdiscovery/retryablehttp-go v1.3.21
-	github.com/redis/go-redis/v9 v9.21.0
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.43.0
