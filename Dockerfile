@@ -33,7 +33,7 @@ RUN git clone --depth 1 --branch v3.2.1 https://github.com/drwetter/testssl.sh /
 # --- runtime stage ---
 # python:3.12-slim-bookworm — PIN BY DIGEST at first build (SECURITY-10/13);
 # placeholder tag kept until CI resolves the digest (like the others, Dependabot-tracked).
-FROM python:3.14-slim-bookworm
+FROM python:3.15-slim-bookworm
 WORKDIR /app
 
 # System userland the tools need: bash + openssl runtime deps for testssl (it
